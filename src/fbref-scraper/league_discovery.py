@@ -7,12 +7,12 @@ from fetcher import FBRefFetcher
 def getLeagueHistoryURL(league: str) -> str:
     return f"{BASEURL}/en/comps/{LEAGUES[league]}/history/{league}-Seasons"
 
-def discoverSeasonURLs(league: str, fetcher: FBRefFetcher | None=None) -> List[Tuple[str, str]]:
+def discoverSeasonURLs(league: str, fetcher: FBRefFetcher | None=None, cachehtml: bool=True) -> List[Tuple[str, str]]:
     if fetcher is None:
         fetcher = FBRefFetcher()
 
     url = getLeagueHistoryURL(league)
-    html = fetcher.fetch(url)
+    html = fetcher.fetch(url, cache=cachehtml)
     soup = BeautifulSoup(html, "html.parser")
 
     seasons = []
@@ -27,5 +27,3 @@ def discoverSeasonURLs(league: str, fetcher: FBRefFetcher | None=None) -> List[T
             seasonURL = BASEURL + seasonTag["href"]
             seasons.append((seasonName, seasonURL))
     return seasons
-
-# print(discoverSeasonURLs("Premier-League"))

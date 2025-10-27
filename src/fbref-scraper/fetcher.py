@@ -31,8 +31,9 @@ class FBRefFetcher:
         response.raise_for_status()
 
         html = response.text
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(html)
+        if cache:
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(html)
         
         self.lastRequestTime = time.time()
         return html
