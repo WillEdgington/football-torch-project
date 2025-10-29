@@ -1,12 +1,12 @@
 import os
 import pandas as pd
-from typing import List, Dict
+from typing import List, Dict, Any
 from pathlib import Path
 
-from config import LEAGUES, BASEURL, MATCHMETADATASCHEMA
+from config import LEAGUES, MATCHMETADATASCHEMA, DBDIR, DBNAME 
 from fetcher import FBRefFetcher
 from league_discovery import discoverSeasonURLs
-from parser import parseSchedulePage
+from parser import parseSchedulePage, parseMatchPage
 from database_writer import DatabaseWriter
 
 def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, limit: int=9, 
@@ -35,11 +35,11 @@ def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, li
 
     return allMatches
 
-def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir: str="data/processed/", 
-                                     fileName: str="match_metadata.csv", save: bool=True, cachehtml: bool=True,
+def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir: str=DBDIR, 
+                                     fileName: str=DBNAME, save: bool=True, cachehtml: bool=True,
                                      useDb: bool=False, mute: bool=False) -> pd.DataFrame:
     filePath = Path(fileDir) / fileName
-    if fetcher == None:
+    if fetcher is None:
         fetcher = FBRefFetcher()
 
     allMatches = []
@@ -60,3 +60,72 @@ def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir:
             df.to_csv(filePath, index=False)
             print(f"\nSAVED {len(df)} MATCHES TO: {filePath}")
     return df
+
+# Match data scraper
+
+def createMatchSchema(scrapedMatches: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    schema = {}
+    for key in scrapedMatches[0].keys():
+        schema[key] = {}
+        if key in MATCHMETADATASCHEMA:
+            schema[key]["type"] = MATCHMETADATASCHEMA[key]["type"]
+            continue
+        if key == "match_id":
+            schema[key]["type"] = "INTEGER"
+        else:
+            schema[key]["type"] = "TEXT"
+
+    return schema
+
+def scrapeMatchData(fetcher: FBRefFetcher | None=None, dbDir: str=DBDIR, 
+                    dbName: str=DBNAME, metadataName: str="match_metadata", savepoint: int=10, 
+                    cachehtml: bool=False, mute: bool=False):
+    assert savepoint > 0, "savepoint must be greater than 0."
+    tableName = "match_data"
+    if fetcher is None:
+        fetcher = FBRefFetcher()
+    
+    with DatabaseWriter(dbDir=dbDir, dbName=dbName) as db:
+        metadata = db.selectCols('id', 'match_url', tableName=metadataName)
+        totalMatches = len(metadata)
+        if not mute:
+            print(f"Found {totalMatches} matches in metadata table.")
+
+        scrapedMatches = []
+        scrapeCount = 0
+
+        for matchTuple in metadata:
+            scrapeCount += 1
+            matchId, matchUrl = matchTuple[:2]
+            if (matchUrl is None) or (db.rowExists(tableName=tableName, colValue=matchUrl, col="match_url")):
+                continue
+            
+            if not mute:
+                print(f"[{scrapeCount}/{totalMatches}] Fetching {matchUrl}")
+            
+            html = fetcher.fetch(matchUrl, cache=cachehtml)
+            matchdata = parseMatchPage(html, matchDict={})
+            matchdata["match_url"] = matchUrl
+            matchdata["match_id"] = matchId
+
+            scrapedMatches.append(matchdata.copy())
+
+            if scrapeCount % savepoint == 0:
+                if scrapeCount == savepoint:
+                    if not mute:
+                        print(f"Creating table: {tableName} in DB...")
+                    db.createTable(tableName=tableName, schema=createMatchSchema(scrapedMatches=scrapedMatches), overwrite=True)
+                
+                if not mute:
+                    print(f"Saving {len(scrapedMatches)} matches to DB...")
+
+                db.insertMany(tableName=tableName, records=scrapedMatches)
+                scrapedMatches.clear()
+
+        if scrapedMatches:
+            if not mute:
+                print(f"Saving final {len(scrapedMatches)} matches to DB...")
+            db.insertMany(tableName=tableName, records=scrapedMatches)
+
+    if not mute:
+        print("Scraping complete.")

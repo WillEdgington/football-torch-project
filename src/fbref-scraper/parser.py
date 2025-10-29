@@ -42,9 +42,8 @@ def parseSchedulePage(html: str) -> List[Dict[str, str | None]]:
 
 # MATCH PAGE PARSERS
 
-def parseMatchPage(html: str) -> Dict[str, str | None]:
+def parseMatchPage(html: str, matchDict: Dict[str, str | None]={}) -> Dict[str, str | None]:
     soup = BeautifulSoup(html, "html.parser")
-    matchDict = {}
 
     # parse individual sections of page:
     # class="scorebox" (goals, W-D-L form, xG, Manager, Captain, data/time, week, attendance, venue, officials)
@@ -56,20 +55,20 @@ def parseMatchPage(html: str) -> Dict[str, str | None]:
     # id="all_keeper_stats_{team_hash}" (keeper stats of team)
     # id="all_shots" (shots)
 
-    parseScorebox(soup=soup, matchDict=matchDict)
-    parseTeamStats(soup=soup, matchDict=matchDict)
-    parseTeamStatsExtra(soup=soup, matchDict=matchDict)
+    matchDict = parseScorebox(soup=soup, matchDict=matchDict)
+    matchDict = parseTeamStats(soup=soup, matchDict=matchDict)
+    matchDict = parseTeamStatsExtra(soup=soup, matchDict=matchDict)
 
     return matchDict
 
-def parseScorebox(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}):
+def parseScorebox(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}) -> Dict[str, str | None]:
     scorebox = soup.select_one("div.scorebox")
     if not scorebox:
-        return
+        return matchDict
     
     divs = scorebox.find_all("div", recursive=False)
     if len(divs) < 2:
-        return
+        return matchDict
     homeDiv, awayDiv = divs[:2]
 
     def extractTeamInfo(teamDiv, prefix):
@@ -98,6 +97,8 @@ def parseScorebox(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}):
     extractTeamInfo(teamDiv=awayDiv, prefix="away")
     # extracting ".scorebox_meta" could be a future development; however, most of that data we already get from the fixture table
 
+    return matchDict
+
 def countCards(div: BeautifulSoup) -> Tuple[str | None, str | None]:
     if not div:
         return "0", "0"
@@ -105,7 +106,7 @@ def countCards(div: BeautifulSoup) -> Tuple[str | None, str | None]:
     red = len(div.select(".red_card")) + len(div.select(".yellow_red_card"))
     return str(yellow), str(red)
 
-def parseTeamStats(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}):
+def parseTeamStats(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}) -> Dict[str, str | None]:
     statDiv = soup.select_one("#team_stats")
     statTable = statDiv.select_one("table") if statDiv else None
     statTr = statTable.find_all("tr", recursive=False)[1:] if statTable else []
@@ -116,7 +117,7 @@ def parseTeamStats(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}):
         statLines.append([statTd[j].select_one("div") for j in range(len(statTd))])
 
     if len(statLines) < 5:
-        return
+        return matchDict
     
     statKeys = ["possession", ["passes", "pass_attempts"], ["sots", "shots"], "saves", ["yellow_cards", "red_cards"]]
 
@@ -124,7 +125,7 @@ def parseTeamStats(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}):
         for j, prefix in enumerate(["home", "away"]):
             if i == 0: # possession
                 possession = cleanText(statLines[i][j].get_text(strip=True)) if statLines[i][j] else None
-                possession = possession[:-1] if possession else None
+                possession = possession.replace("%", "") if possession else None
                 matchDict[f"{prefix}_{key}"] = possession
                 continue
             elif i == 4: # cards
@@ -144,15 +145,17 @@ def parseTeamStats(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}):
                 continue
             matchDict[f"{prefix}_{key}"] = stats[0] if len(stats) >= 1 else None
     
+    return matchDict
+    
 def normalizeLabel(label: str) -> str:
-    label = label.strip().lower()
-    label = re.sub(" ", "_", label)
-    return label
+    label = label.strip().lower().replace(" ", "_")
+    label = re.sub(r"[^a-z0-9_]+", "", label)
+    return label.strip("_")
 
-def parseTeamStatsExtra(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}):
+def parseTeamStatsExtra(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}) -> Dict[str, str | None]:
     statDiv = soup.select_one("#team_stats_extra")
     if not statDiv:
-        return
+        return matchDict
     
     for groupDiv in statDiv.find_all("div", recursive=False):
         divs = groupDiv.find_all("div", recursive=False)[3:]
@@ -170,6 +173,8 @@ def parseTeamStatsExtra(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}
             label = normalizeLabel(label)
             matchDict[f"home_{label}"] = homeVal
             matchDict[f"away_{label}"] = awayVal
+
+    return matchDict
 
 # fetcher = FBRefFetcher()
 # html = fetcher.fetch(url="https://fbref.com/en/matches/dbcf5536/Swansea-City-West-Bromwich-Albion-December-9-2017-Premier-League")

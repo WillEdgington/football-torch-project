@@ -11,7 +11,10 @@ class DatabaseWriter:
         self.dbPath.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.dbPath)
     
-    def createTable(self, tableName: str, schema: Dict[str, Dict[str, Any]]):
+    def createTable(self, tableName: str, schema: Dict[str, Dict[str, Any]], overwrite: bool=False):
+        if overwrite:
+            self.conn.execute(f"DROP TABLE IF EXISTS {tableName};")
+            self.conn.commit()
         cols = ", ".join([f"{col} {schema[col].get('type', 'TEXT')}" for col in schema.keys()])
         query = f"""
         CREATE TABLE IF NOT EXISTS {tableName} (
@@ -35,12 +38,29 @@ class DatabaseWriter:
         """
 
         data = [tuple(record.get(c) for c in cols) for record in records]
-        self.conn.executemany(query, data)
+        cur = self.conn.cursor()
+        cur.executemany(query, data)
         self.conn.commit()
+    
+    def selectCols(self, *cols: str, tableName: str, orderby: str="id") -> List[Any]:
+        if len(cols) == 0:
+            return []
+        
+        colStr = ", ".join([f"{col}" for col in cols])
+        query = f"""
+        SELECT {colStr} FROM {tableName}
+        ORDER BY {orderby} ASC;
+        """
+
+        data = self.conn.execute(query)
+        return data.fetchall()
 
     def rowExists(self, tableName: str, colValue: str, col: str) -> bool:
-        row = self.conn.execute(f'SELECT 1 FROM "{tableName}" WHERE "{col}" = ? LIMIT 1;', (colValue,))
-        return row.fetchone() is not None
+        try:
+            row = self.conn.execute(f'SELECT 1 FROM "{tableName}" WHERE "{col}" = ? LIMIT 1;', (colValue,))
+            return row.fetchone() is not None
+        except sqlite3.OperationalError:
+            return False 
     
     def commit(self):
         self.conn.commit()
