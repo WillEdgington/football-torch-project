@@ -3,7 +3,7 @@ import pandas as pd
 from typing import List, Dict, Any
 from pathlib import Path
 
-from config import LEAGUES, MATCHMETADATASCHEMA, DBDIR, DBNAME 
+from config import LEAGUES, MATCHMETADATASCHEMA, DBRAWDIR, DBRAWNAME 
 from fetcher import FBRefFetcher
 from league_discovery import discoverSeasonURLs
 from parser import parseSchedulePage, parseMatchPage
@@ -35,9 +35,9 @@ def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, li
 
     return allMatches
 
-def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir: str=DBDIR, 
-                                     fileName: str=DBNAME, save: bool=True, cachehtml: bool=True,
-                                     useDb: bool=False, mute: bool=False) -> pd.DataFrame:
+def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir: str=DBRAWDIR, 
+                                     fileName: str=DBRAWNAME, save: bool=True, cachehtml: bool=True,
+                                     useDb: bool=True, mute: bool=False) -> pd.DataFrame:
     filePath = Path(fileDir) / fileName
     if fetcher is None:
         fetcher = FBRefFetcher()
@@ -45,7 +45,7 @@ def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir:
     allMatches = []
 
     for league in LEAGUES.keys():
-        allMatches += scrapeSeasonsFixturesData(league, cachehtml=cachehtml)
+        allMatches += scrapeSeasonsFixturesData(league, cachehtml=cachehtml, mute=mute)
     
     df = pd.DataFrame(allMatches)
     if save:
@@ -54,11 +54,13 @@ def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir:
             db.createTable(tableName="match_metadata", schema=MATCHMETADATASCHEMA)
             db.insertMany(tableName="match_metadata", records=allMatches)
             db.close()
-            print(f"\nSAVED {len(df)} MATCHES TO: {db.dbPath}")
+            if not mute:
+                print(f"\nSAVED {len(df)} MATCHES TO: {db.dbPath}")
         else:    
             filePath.parent.mkdir(parents=True, exist_ok=True)
             df.to_csv(filePath, index=False)
-            print(f"\nSAVED {len(df)} MATCHES TO: {filePath}")
+            if not mute:
+                print(f"\nSAVED {len(df)} MATCHES TO: {filePath}")
     return df
 
 # Match data scraper
@@ -77,8 +79,8 @@ def createMatchSchema(scrapedMatches: List[Dict[str, Any]]) -> Dict[str, Dict[st
 
     return schema
 
-def scrapeMatchData(fetcher: FBRefFetcher | None=None, dbDir: str=DBDIR, 
-                    dbName: str=DBNAME, metadataName: str="match_metadata", savepoint: int=10, 
+def scrapeMatchData(fetcher: FBRefFetcher | None=None, dbDir: str=DBRAWDIR, 
+                    dbName: str=DBRAWNAME, metadataName: str="match_metadata", savepoint: int=10, 
                     cachehtml: bool=False, mute: bool=False):
     assert savepoint > 0, "savepoint must be greater than 0."
     tableName = "match_data"
@@ -101,7 +103,7 @@ def scrapeMatchData(fetcher: FBRefFetcher | None=None, dbDir: str=DBDIR,
                 continue
             
             if not mute:
-                print(f"[{scrapeCount}/{totalMatches}] Fetching {matchUrl}")
+                print(f"[{scrapeCount}/{totalMatches}] Scraping data from: {matchUrl}")
             
             html = fetcher.fetch(matchUrl, cache=cachehtml)
             matchdata = parseMatchPage(html, matchDict={})

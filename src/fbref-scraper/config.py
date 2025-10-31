@@ -26,5 +26,8 @@ MATCHMETADATASCHEMA = {
     "match_url": {"data-stat": None, "type": "TEXT UNIQUE"}
 }
 
+DBRAWDIR = "data/raw"
+DBRAWNAME = "fbref_data_raw.db"
+
 DBDIR = "data/processed"
 DBNAME = "fbref_data.db"

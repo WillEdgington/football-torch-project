@@ -175,9 +175,3 @@ def parseTeamStatsExtra(soup: BeautifulSoup, matchDict: Dict[str, str | None]={}
             matchDict[f"away_{label}"] = awayVal
 
     return matchDict
-
-# fetcher = FBRefFetcher()
-# html = fetcher.fetch(url="https://fbref.com/en/matches/dbcf5536/Swansea-City-West-Bromwich-Albion-December-9-2017-Premier-League")
-# print(parseMatchPage(html))
-# html2 = fetcher.fetch(url="https://fbref.com/en/matches/a562da13/Manchester-United-Chelsea-September-20-2025-Premier-League")
-# print(parseMatchPage(html2))
