@@ -10,7 +10,7 @@ from parser import parseSchedulePage, parseMatchPage
 from database_objects import DatabaseWriter
 
 def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, limit: int=9, 
-                              cachehtml: bool=True, mute: bool=False) -> List[Dict[str, str]]:
+                              cachehtml: bool=True, mute: bool=False, refreshCurr: bool=True) -> List[Dict[str, str]]:
     assert limit >= 1, "You must scrape atleast one season"
     if fetcher == None:
         fetcher = FBRefFetcher()
@@ -25,8 +25,9 @@ def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, li
         if not mute:
             print(f"    Season: {season}")
         scheduleURL = seasonURL.replace(f"/{season}/", f"/{season}/schedule/") \
-                                   .replace("-Stats", "-Scores-and-Fixtures")
-        html = fetcher.fetch(scheduleURL, cache=cachehtml)
+                               .replace(f"{LEAGUES[league]}/{league}", f"{LEAGUES[league]}/schedule/{league}") \
+                               .replace("-Stats", "-Scores-and-Fixtures")
+        html = fetcher.fetch(scheduleURL, cache=(cachehtml) and not (season == seasons[0][0] and refreshCurr))
         matches = parseSchedulePage(html)
         for match in matches:
             match["league"] = league
@@ -37,7 +38,7 @@ def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, li
 
 def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir: str=DBRAWDIR, 
                                      fileName: str=DBRAWNAME, save: bool=True, cachehtml: bool=True,
-                                     useDb: bool=True, mute: bool=False) -> pd.DataFrame:
+                                     useDb: bool=True, mute: bool=False, refreshCurr: bool=True) -> pd.DataFrame:
     filePath = Path(fileDir) / fileName
     if fetcher is None:
         fetcher = FBRefFetcher()
@@ -45,7 +46,7 @@ def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir:
     allMatches = []
 
     for league in LEAGUES.keys():
-        allMatches += scrapeSeasonsFixturesData(league, cachehtml=cachehtml, mute=mute)
+        allMatches += scrapeSeasonsFixturesData(league, cachehtml=cachehtml, mute=mute, refreshCurr=refreshCurr)
     
     df = pd.DataFrame(allMatches)
     if save:
