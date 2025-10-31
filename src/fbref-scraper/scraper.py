@@ -3,11 +3,11 @@ import pandas as pd
 from typing import List, Dict, Any
 from pathlib import Path
 
-from config import LEAGUES, MATCHMETADATASCHEMA, DBRAWDIR, DBRAWNAME 
+from config import LEAGUES, MATCHMETADATASCHEMA, DBRAWDIR, DBRAWNAME, METADATATABLE, MATCHTABLE
 from fetcher import FBRefFetcher
 from league_discovery import discoverSeasonURLs
 from parser import parseSchedulePage, parseMatchPage
-from database_writer import DatabaseWriter
+from database_objects import DatabaseWriter
 
 def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, limit: int=9, 
                               cachehtml: bool=True, mute: bool=False) -> List[Dict[str, str]]:
@@ -51,8 +51,8 @@ def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir:
     if save:
         if useDb:
             db = DatabaseWriter(dbDir=fileDir, dbName=fileName)
-            db.createTable(tableName="match_metadata", schema=MATCHMETADATASCHEMA)
-            db.insertMany(tableName="match_metadata", records=allMatches)
+            db.createTable(tableName=METADATATABLE, schema=MATCHMETADATASCHEMA)
+            db.insertMany(tableName=METADATATABLE, records=allMatches)
             db.close()
             if not mute:
                 print(f"\nSAVED {len(df)} MATCHES TO: {db.dbPath}")
@@ -80,15 +80,15 @@ def createMatchSchema(scrapedMatches: List[Dict[str, Any]]) -> Dict[str, Dict[st
     return schema
 
 def scrapeMatchData(fetcher: FBRefFetcher | None=None, dbDir: str=DBRAWDIR, 
-                    dbName: str=DBRAWNAME, metadataName: str="match_metadata", savepoint: int=10, 
+                    dbName: str=DBRAWNAME, metadataName: str=METADATATABLE, savepoint: int=10, 
                     cachehtml: bool=False, mute: bool=False):
     assert savepoint > 0, "savepoint must be greater than 0."
-    tableName = "match_data"
+    tableName = MATCHTABLE
     if fetcher is None:
         fetcher = FBRefFetcher()
     
     with DatabaseWriter(dbDir=dbDir, dbName=dbName) as db:
-        metadata = db.selectCols('id', 'match_url', tableName=metadataName)
+        metadata = db.selectCols('id', 'match_url', tableName=metadataName, orderby="id")
         totalMatches = len(metadata)
         if not mute:
             print(f"Found {totalMatches} matches in metadata table.")

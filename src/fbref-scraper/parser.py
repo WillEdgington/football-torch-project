@@ -4,7 +4,6 @@ from bs4 import BeautifulSoup
 from typing import Dict, List, Tuple
 
 from config import BASEURL, MATCHMETADATASCHEMA
-from fetcher import FBRefFetcher
 
 def cleanText(text: str | None) -> str | None:
     if not text:
