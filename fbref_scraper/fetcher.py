@@ -3,7 +3,7 @@ import requests
 from pathlib import Path
 import hashlib
 
-from config import RATELIMITSECONDS, CACHEDIR
+from .config import RATELIMITSECONDS, CACHEDIR
 
 def hashURL(url: str):
     return hashlib.md5(url.encode()).hexdigest()

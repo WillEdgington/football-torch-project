@@ -3,11 +3,11 @@ import pandas as pd
 from typing import List, Dict, Any
 from pathlib import Path
 
-from config import LEAGUES, MATCHMETADATASCHEMA, DBRAWDIR, DBRAWNAME, METADATATABLE, MATCHTABLE
-from fetcher import FBRefFetcher
-from league_discovery import discoverSeasonURLs
-from parser import parseSchedulePage, parseMatchPage
-from database_objects import DatabaseWriter
+from .config import LEAGUES, MATCHMETADATASCHEMA, DBRAWDIR, DBRAWNAME, METADATATABLE, MATCHTABLE
+from .fetcher import FBRefFetcher
+from .league_discovery import discoverSeasonURLs
+from .parser import parseSchedulePage, parseMatchPage
+from .database_objects import DatabaseWriter
 
 def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, limit: int=9, 
                               cachehtml: bool=True, mute: bool=False, refreshCurr: bool=True) -> List[Dict[str, str]]:

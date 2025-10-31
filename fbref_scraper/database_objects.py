@@ -4,7 +4,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any
 
-from config import DBRAWDIR, DBRAWNAME, DBDIR, DBNAME
+from .config import DBRAWDIR, DBRAWNAME, DBDIR, DBNAME
 
 class DatabaseObject:
     def __init__(self, dbDir: str=DBRAWDIR, dbName: str=DBRAWNAME):

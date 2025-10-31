@@ -1,0 +1,1 @@
+print("fbref_scraper package loaded successfully")

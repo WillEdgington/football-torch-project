@@ -1,6 +1,6 @@
-from fetcher import FBRefFetcher
-from scraper import scrapeLeaguesSeasonsFixturesData, scrapeMatchData
-from cleaner import cleanFbrefData
+from .fetcher import FBRefFetcher
+from .scraper import scrapeLeaguesSeasonsFixturesData, scrapeMatchData
+from .cleaner import cleanFbrefData
 
 if __name__=="__main__":
     fetcher = FBRefFetcher()

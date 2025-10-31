@@ -3,8 +3,8 @@ import numpy as np
 
 from typing import Tuple, List, Dict, Any
 
-from config import DBRAWDIR, DBRAWNAME, DBDIR, DBNAME, METADATATABLE, MATCHTABLE
-from database_objects import DatabaseReader, DatabaseWriter
+from .config import DBRAWDIR, DBRAWNAME, DBDIR, DBNAME, METADATATABLE, MATCHTABLE
+from .database_objects import DatabaseReader, DatabaseWriter
 
 def loadRawData(dbDir: str=DBRAWDIR, dbName: str=DBRAWNAME, asDf: bool=True) -> Tuple[List[Any] | pd.DataFrame, List[Any] | pd.DataFrame]:
     with DatabaseReader(dbDir=dbDir, dbName=dbName) as db:

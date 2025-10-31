@@ -3,7 +3,7 @@ import re
 from bs4 import BeautifulSoup
 from typing import Dict, List, Tuple
 
-from config import BASEURL, MATCHMETADATASCHEMA
+from .config import BASEURL, MATCHMETADATASCHEMA
 
 def cleanText(text: str | None) -> str | None:
     if not text:

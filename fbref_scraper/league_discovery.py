@@ -1,8 +1,8 @@
 from bs4 import BeautifulSoup
 from typing import List, Tuple
 
-from config import BASEURL, LEAGUES
-from fetcher import FBRefFetcher
+from .config import BASEURL, LEAGUES
+from .fetcher import FBRefFetcher
 
 def getLeagueHistoryURL(league: str) -> str:
     return f"{BASEURL}/en/comps/{LEAGUES[league]}/history/{league}-Seasons"
