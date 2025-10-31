@@ -52,7 +52,7 @@ class DatabaseWriter(DatabaseObject):
         if overwrite:
             self.conn.execute(f"DROP TABLE IF EXISTS {tableName};")
             self.conn.commit()
-        cols = ", ".join([f"{col} {schema[col].get('type', 'TEXT')}" for col in schema.keys()])
+        cols = ", ".join([f"{col} {schema[col].get('type', 'TEXT')}" for col in schema.keys() if col != "id"])
         query = f"""
         CREATE TABLE IF NOT EXISTS {tableName} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
