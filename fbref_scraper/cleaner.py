@@ -36,11 +36,12 @@ def processMetaDataframe(metaDf: pd.DataFrame, dropCols: List[str]=[]) -> pd.Dat
         metaDf[col] = (
             metaDf[col].astype(str)
             .str.replace(",", "", regex=False)
+            .replace("None", "")
         )
         try:
             metaDf[col] = pd.to_numeric(metaDf[col])
         except ValueError:
-            pass
+            continue
 
     return metaDf
 
@@ -48,6 +49,9 @@ def processStatsDataframe(statsDf: pd.DataFrame, dropCols: List[str]=[]) -> pd.D
     if dropCols:
         statsDf = statsDf.drop(columns=[c for c in dropCols if c in statsDf.columns])
     
+    statsDf["home_goals"] = pd.to_numeric(statsDf["home_goals"], errors="coerce")
+    statsDf["away_goals"] = pd.to_numeric(statsDf["away_goals"], errors="coerce")
+
     for col in statsDf.columns:
         if statsDf[col].dtype != "object":
             continue
@@ -55,11 +59,12 @@ def processStatsDataframe(statsDf: pd.DataFrame, dropCols: List[str]=[]) -> pd.D
         statsDf[col] = (
             statsDf[col].astype(str)
             .str.replace(",", "", regex=False)
+            .replace("None", "")
         )
         try:
             statsDf[col] = pd.to_numeric(statsDf[col])
         except ValueError:
-            pass
+            continue
     
     return statsDf
 
@@ -71,7 +76,7 @@ def transformDataframes(metaDf: pd.DataFrame, statsDf: pd.DataFrame) -> pd.DataF
     metaDf = processMetaDataframe(metaDf=metaDf, dropCols=dropFromMeta)
     statsDf = processStatsDataframe(statsDf=statsDf)
     
-    df = metaDf.merge(statsDf, on="match_url", how="inner", validate="one_to_one")
+    df = metaDf.merge(statsDf, on="match_url", how="inner", validate="one_to_one").dropna(subset=["home_goals", "away_goals"])
     return df
 
 def getSchemaFromDf(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
