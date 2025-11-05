@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import unicodedata
 
 from fbref_scraper import DatabaseReader, DBDIR, DBNAME, MATCHTABLE
@@ -90,41 +91,48 @@ def getFocalMeans(df:pd.DataFrame, nameKey: str, valKey: str) -> pd.DataFrame:
     return pd.DataFrame(means).dropna(subset=f"{valKey}_mean")
 
 def addRollingAvg(df: pd.DataFrame, nameCol: str, valueCol: str, window: int=20, 
-                  minPeriods: int=1, calcForDays: bool=False) -> pd.DataFrame:
+                  method: str="simple") -> pd.DataFrame:
     assert window >= 1, "window must be greater than zero."
     df = df.sort_values([nameCol, "date"]).copy()
 
-    if calcForDays:
-        window = pd.Timedelta(days=window)
+    grouped = df.groupby(nameCol)[valueCol]
+    newCol = f"{valueCol}_roll_mean_{nameCol}"
 
-    df[f"{valueCol}_roll_mean_{nameCol}"] = (
-        df.groupby(nameCol)[valueCol]
-        .rolling(window=window, min_periods=minPeriods)
-        .mean()
-        .reset_index(level=0, drop=True)
-    )
+    if method == "ema":
+        df[newCol] = grouped.transform(lambda x: x.ewm(span=window, adjust=False).mean())
+    elif method == "gaussian":
+        df[newCol] = grouped.transform(lambda x: x.rolling(window=window, win_type=method).mean(std=window/4))
+    else:
+        df[newCol] = grouped.transform(lambda x: x.rolling(window=window).mean())
 
-    df.dropna(subset=[f"{valueCol}_roll_mean_{nameCol}"], inplace=True)
     return df
 
-def addRollingLeagueDeviation(df: pd.DataFrame, nameCol: str, valueCol: str, window: int=20, minPeriods: int=1, calcForDays: bool=False) -> pd.DataFrame:
+def addRollingLeagueDeviation(df: pd.DataFrame, nameCol: str, valueCol: str, window: int=20, 
+                              method: str="simple") -> pd.DataFrame:
     df = df.copy()
-    df = addRollingAvg(df=df, nameCol="league", valueCol=valueCol, window=window * 20, minPeriods=minPeriods * 20, calcForDays=calcForDays)
+    df = addRollingAvg(df=df, nameCol="league", valueCol=valueCol, window=2 * 10, method="simple") # last 10 matches (1 match week)
     df[f"{valueCol}_dev"] = (
         df[f"{valueCol}"] / df[f"{valueCol}_roll_mean_league"] - 1
     )
-    df = addRollingAvg(df=df, nameCol=nameCol, valueCol=f"{valueCol}_dev", window=window, minPeriods=minPeriods, calcForDays=calcForDays)
-
+    df = addRollingAvg(df=df, nameCol=nameCol, valueCol=f"{valueCol}_dev", window=window, 
+                       method=method)
     return df
 
-def addRollingLeagueDevsAndDiff(df: pd.DataFrame, nameCol: str, valueCol: str, window: int=20, minPeriods:int=1, calcForDays: bool=False) -> pd.DataFrame:
+def addRollingLeagueDevsAndDiff(df: pd.DataFrame, nameCol: str, valueCol: str, window: int=20, 
+                                method: str="simple", minGames:int=1) -> pd.DataFrame:
     df = df.copy()
-    df = addRollingLeagueDeviation(df=df, nameCol=nameCol, valueCol=f"{valueCol}_for", window=window, minPeriods=minPeriods, calcForDays=calcForDays)
-    df = addRollingLeagueDeviation(df=df, nameCol=nameCol, valueCol=f"{valueCol}_against", window=window, minPeriods=minPeriods, calcForDays=calcForDays)
+    df = addRollingLeagueDeviation(df=df, nameCol=nameCol, valueCol=f"{valueCol}_for", window=window, method=method)
+    df = addRollingLeagueDeviation(df=df, nameCol=nameCol, valueCol=f"{valueCol}_against", window=window, method=method)
     df[f"{valueCol}_diff_dev_roll_mean_{nameCol}"] = (
         df[f"{valueCol}_for_dev_roll_mean_{nameCol}"] - df[f"{valueCol}_against_dev_roll_mean_{nameCol}"]
     )
-    return df
+    return df.groupby(by=nameCol).filter(func=lambda g: len(g) >= minGames)
+
+def cutoffByDate(df: pd.DataFrame, daysAgo: int=0, weeksAgo: int=0) -> pd.DataFrame:
+    assert daysAgo >= 0 and weeksAgo >= 0, "daysAgo must be positive"
+    df = df.copy()
+    cutoffdate = pd.Timestamp.now() - pd.Timedelta(days=daysAgo, weeks=weeksAgo)
+    return df[df["date"] >= cutoffdate]
 
 def getMostRecentRows(df: pd.DataFrame, nameCol: str, daysAgo: int|None=None) -> pd.DataFrame:
     df = df.copy()

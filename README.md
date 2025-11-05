@@ -4,11 +4,10 @@ This is a **machine learning** project that builds a **reinforcement learning–
 It scrapes match data, learns predictive representations using **deep learning**, and allocates bets using **reinforcement learning** and **portfolio optimization**.
 
 ## Features
-- **Scrape and preprocess** football match data from **FBRef**. (work in progress)
+- **Scrape and preprocess** football match data from **FBRef** (respecting their robots.txt).
 - Train a predictive match outcome model using **PyTorch**. (work in progress)
 - Use **reinforcement learning** to simulate and optimize betting strategies. (work in progress)
 - Manage risk and bankroll allocation intelligently. (work in progress)
-- Visualize model outputs in a **user-firendly** manner. (work in progress)
 
 ### Disclaimer!
 This project is for **research and educational purposes** only.

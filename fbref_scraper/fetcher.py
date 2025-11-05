@@ -36,9 +36,9 @@ class FBRefFetcher:
             html = response.text
         except requests.exceptions.HTTPError:
             if self.failAttempts < 5:
-                self.failAttempts += 1
                 if not mute:
                     print(f"Request failed. {5 - self.failAttempts} attempts remaining. Trying again in {30 + (30 * self.failAttempts)} seconds...")
+                self.failAttempts += 1
                 time.sleep(30 + (30 * self.failAttempts))
                 return self.fetch(url=url, cache=cache)
             return html

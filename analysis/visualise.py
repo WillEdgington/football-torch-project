@@ -1,13 +1,13 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .prepare_data import prepareForAgainstDf, addRollingLeagueDevsAndDiff, getMostRecentRows
+from .prepare_data import prepareForAgainstDf, addRollingLeagueDevsAndDiff, getMostRecentRows, cutoffByDate
 
 def plotScatterForAgainst(nameCol: str, valueCol: str, window: int=10, daysAgo: int|None=None,
-                          minPeriods: int=1, getTopN: int=20, title: str="", calcForDays: bool=False):
+                          minGames: int=1, getTopN: int=20, title: str=""):
     df = prepareForAgainstDf()
     df = addRollingLeagueDevsAndDiff(df=df, nameCol=nameCol, valueCol=valueCol,
-                                     window=window, minPeriods=minPeriods, calcForDays=calcForDays)
+                                     window=window, minGames=minGames)
     df = getMostRecentRows(df=df, nameCol=nameCol, daysAgo=daysAgo)
     df = df.sort_values(by=f"{valueCol}_diff_dev_roll_mean_{nameCol}", ascending=False)
     df = df.head(n=getTopN).reset_index(drop=True)
@@ -22,12 +22,15 @@ def plotScatterForAgainst(nameCol: str, valueCol: str, window: int=10, daysAgo: 
     plt.title(title)
     plt.show()
 
-def plotBarForAgainst(nameCol: str, valueCol: str, window: int=20, daysAgo: int|None=None,
-                          minPeriods: int=1, getTopN: int=10, title: str="", calcForDays: bool=False):
+def plotBarForAgainst(nameCol: str, valueCol: str, window: int=20, daysSinceFirst: int|None=None, 
+                      daysSinceLast: int|None=None, method: str="simple", minGames: int=1, getTopN: int=10, title: str=""):
     df = prepareForAgainstDf()
-    df = addRollingLeagueDevsAndDiff(df=df, nameCol=nameCol, valueCol=valueCol,
-                                     window=window, minPeriods=minPeriods, calcForDays=calcForDays)
-    df = getMostRecentRows(df=df, nameCol=nameCol, daysAgo=daysAgo)
+    if daysSinceFirst:
+        df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
+
+    df = addRollingLeagueDevsAndDiff(df=df, nameCol=nameCol, valueCol=valueCol, window=window,
+                                     minGames=minGames, method=method)
+    df = getMostRecentRows(df=df, nameCol=nameCol, daysAgo=daysSinceLast)
     df = df.sort_values(by=f"{valueCol}_diff_dev_roll_mean_{nameCol}", ascending=False)
     df = df.head(n=getTopN).reset_index(drop=True)
 
@@ -47,8 +50,31 @@ def plotBarForAgainst(nameCol: str, valueCol: str, window: int=20, daysAgo: int|
     plt.xticks(x, list(df[nameCol]), rotation=45, ha="right")
     plt.xlabel(nameCol.capitalize())
     plt.ylabel("Rolling League Deviation")
-    plt.title(title or f"{valLabel} Rolling League Deviations (Top {getTopN})")
+    plt.title(title or f"{nameCol} {valLabel} Rolling League Deviations (Top {getTopN})")
     plt.legend()
     plt.tight_layout()
     plt.grid(axis="y", linestyle="--", alpha=0.5)
+    plt.show()
+
+def plotTimeForAgainst(nameCol: str, valueCol: str, window: int=20, daysSinceFirst: int|None=None, 
+                      daysSinceLast: int|None=None, method: str="simple", minGames: int=1, getTopN: int=10, title: str=""):
+    df = prepareForAgainstDf()
+    if daysSinceFirst:
+        df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
+
+    df = addRollingLeagueDevsAndDiff(df=df, nameCol=nameCol, valueCol=valueCol, window=window,
+                                     minGames=minGames, method=method)
+    recentDf = getMostRecentRows(df=df, nameCol=nameCol, daysAgo=daysSinceLast)
+    recentDf = recentDf.sort_values(by=f"{valueCol}_diff_dev_roll_mean_{nameCol}", ascending=False)
+    top = recentDf.head(n=getTopN).reset_index(drop=True)[nameCol].unique()
+
+    for name in top:
+        nameDf = df[df[nameCol] == name]
+        plt.plot(nameDf["date"], nameDf[f"{valueCol}_diff_dev_roll_mean_{nameCol}"], label=name)
+    
+    plt.ylabel("Rolling League Deviation")
+    plt.ylabel(f"{valueCol} Diff Rolling league Dev")
+    plt.xlabel("Date")
+    plt.title(f"{nameCol} {valueCol} Rolling Deviation Over Time (Top {getTopN})")
+    plt.legend()
     plt.show()
