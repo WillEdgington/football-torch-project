@@ -1,15 +1,17 @@
-from .visualise import plotBarForAgainst, plotTimeForAgainst, plotBarWinningStats, plotBarR2Stats
+from .visualise import plotBarForAgainst, plotTimeForAgainst, plotBarWinningStats, plotBarR2Stats, plotXYWithRegression
 
 if __name__=="__main__":
     method = "ema"
     nameCol = "manager"
     valueCol = "xg"
-    # plotBarForAgainst(nameCol=nameCol, valueCol=valueCol, window=40, daysSinceFirst=365*2,
+    daysSinceFirst = 365*2
+    # plotBarForAgainst(nameCol=nameCol, valueCol=valueCol, window=40, daysSinceFirst=daysSinceFirst,
     #                   daysSinceLast=30, method=method, minGames=20, getTopN=10)
-    # plotTimeForAgainst(nameCol=nameCol, valueCol=valueCol, window=40, daysSinceFirst=365*2,
+    # plotTimeForAgainst(nameCol=nameCol, valueCol=valueCol, window=40, daysSinceFirst=daysSinceFirst,
     #                    daysSinceLast=30, method=method, minGames=20, getTopN=5)
     filterCol = "team"
-    filter = "brentford"
+    filter = "manchester united"
 
     plotBarWinningStats(showHomeAway=True, filterCol=filterCol, filter=filter, window=40, method="ema")
-    plotBarR2Stats(getTopN=30, daysSinceFirst=365, filterCol=filterCol, filter=filter)
+    plotBarR2Stats(getTopN=30, daysSinceFirst=daysSinceFirst, filterCol=filterCol, filter=filter)
+    plotXYWithRegression(xCol="xg_for", yCol="goals_diff", daysSinceFirst=daysSinceFirst, filterCol=filterCol, filter=filter)

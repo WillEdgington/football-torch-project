@@ -2,9 +2,10 @@ import pandas as pd
 import numpy as np
 import unicodedata
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error
+from numpy.typing import ArrayLike
 
 from fbref_scraper import DatabaseReader, DBDIR, DBNAME, MATCHTABLE
 
@@ -215,7 +216,7 @@ def getWinProbs(df: pd.DataFrame, getTopN: int=10, filterCol: str|None=None, fil
     resultDf = resultDf.sort_values(by="win_prob", ascending=False).head(n=getTopN)
     return resultDf
 
-def prepareLinearRegression(x, y) -> Dict[str, Any]:
+def prepareLinearRegression(x: ArrayLike, y: ArrayLike) -> Dict[str, Any]:
     model = LinearRegression().fit(x, y)
     yPred = model.predict(x)
     
@@ -228,6 +229,28 @@ def prepareLinearRegression(x, y) -> Dict[str, Any]:
         "residuals": y - yPred
     }
 
+def getXYAndLinearRegression(df: pd.DataFrame=pd.DataFrame(), xKey: str|None=None, yKey: str|None=None, 
+                             x: ArrayLike|None=None, y: ArrayLike|None=None, filterCol: str|None=None, filter: str="") -> Tuple[ArrayLike, ArrayLike, Dict[str, Any]]:
+    assert xKey is not None or x is not None, "only one of xKey or x can be given as None"
+    assert yKey is not None or y is not None, "only one of yKey or y can be given as None"
+
+    df = df.copy()
+    if filterCol and filterCol in df.columns:
+        df = df[df[filterCol] == filter]
+    
+    for key in [xKey, yKey]:    
+        if key is None:
+            continue
+        if key not in df.columns and key.endswith("_diff"):
+            baseKey = key.removesuffix("_diff")
+            df[key] = df[f"{baseKey}_for"] - df[f"{baseKey}_against"]
+        assert key in df.columns, f"key given for column ({key}) could not be found in the given dataframe."
+        df.dropna(subset=key, inplace=True)
+
+    x = x if x is not None else df[xKey].values.reshape(-1, 1)
+    y = y if y is not None else df[yKey].values.reshape(-1, 1)
+    return x, y, prepareLinearRegression(x, y)
+    
 def getRegressionStats(df: pd.DataFrame, stats: List[str]|None=None, yKey: str="goals_diff", trackSufX: List[str]=["diff", "for", "against"],
                        filterCol: str|None=None, filter: str="") -> pd.DataFrame:
     for suf in trackSufX:

@@ -2,7 +2,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from .prepare_data import prepareForAgainstDf, addRollingLeagueDevsAndDiff, getMostRecentRows, cutoffByDate, prepareMatchDataFrame, getWinProbs, getRegressionStats
+from .prepare_data import (
+                        prepareForAgainstDf, addRollingLeagueDevsAndDiff, getMostRecentRows, cutoffByDate, prepareMatchDataFrame,
+                        getWinProbs, getRegressionStats, getXYAndLinearRegression
+                        )
 
 def plotScatterForAgainst(nameCol: str, valueCol: str, window: int=10, daysAgo: int|None=None,
                           minGames: int=1, getTopN: int=20, title: str=""):
@@ -135,5 +138,33 @@ def plotBarR2Stats(getTopN: int=15, daysSinceFirst: int|None=None, filterCol: st
     ]
     plt.legend(handles=handles, loc="upper right")
 
+    plt.tight_layout()
+    plt.show()
+
+def plotXYWithRegression(xCol: str, yCol: str, daysSinceFirst: int|None=None, filterCol: str|None=None, filter: str=""):
+    df = prepareForAgainstDf()
+
+    if daysSinceFirst:
+        df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
+    
+    x, y, lrdict = getXYAndLinearRegression(df=df, xKey=xCol, yKey=yCol, filterCol=filterCol, filter=filter)
+    plt.figure(figsize=(8, 6))
+    plt.scatter(x, y, s=100, color="gray", alpha=0.6)
+
+    plt.plot(x, lrdict["y_pred"], color="blue", linewidth=2, label=f"f(X)={lrdict['coefficients'][0][0]:.1f}X + {lrdict['intercept'][0]:.1f}")
+    
+    xLab, yLab = xCol.replace("_", " ").title(), yCol.replace("_", " ").title()
+    filterLabel = "" if filterCol is None else f" for {filterCol} - {filter}"
+    plt.xlabel(xLab)
+    plt.ylabel(yLab)
+    plt.title(f"{xLab} vs {yLab}{filterLabel}")
+    
+
+    text = f"R2 = {lrdict['r2']:.3f}\nMSE = {lrdict['mse']:.3f}\n"
+    plt.text(0.05, 0.95, text, transform=plt.gca().transAxes,
+            fontsize=9, verticalalignment="top",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.5))
+    
+    plt.legend()
     plt.tight_layout()
     plt.show()
