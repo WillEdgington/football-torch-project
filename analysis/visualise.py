@@ -1,7 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
-from .prepare_data import prepareForAgainstDf, addRollingLeagueDevsAndDiff, getMostRecentRows, cutoffByDate
+from .prepare_data import prepareForAgainstDf, addRollingLeagueDevsAndDiff, getMostRecentRows, cutoffByDate, prepareMatchDataFrame, getWinProbs, getRegressionStats
 
 def plotScatterForAgainst(nameCol: str, valueCol: str, window: int=10, daysAgo: int|None=None,
                           minGames: int=1, getTopN: int=20, title: str=""):
@@ -77,4 +78,62 @@ def plotTimeForAgainst(nameCol: str, valueCol: str, window: int=20, daysSinceFir
     plt.xlabel("Date")
     plt.title(f"{nameCol} {valueCol} Rolling Deviation Over Time (Top {getTopN})")
     plt.legend()
+    plt.show()
+
+def plotBarWinningStats(getTopN: int=10, showHomeAway: bool=False, filterCol: str|None=None, filter: str="", window: int|None=200, method: str="ema"):
+    df = prepareMatchDataFrame()
+    resultDf = getWinProbs(df=df, getTopN=getTopN, filterCol=filterCol, filter=filter, window=window, method=method)
+
+    x = np.arange(len(resultDf))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    if showHomeAway:
+        ax.bar(x - width/2, resultDf["home_win_prob"], width=width, label="Home")
+        ax.bar(x + width/2, resultDf["away_win_prob"], width=width, label="Away")
+        ax.legend()
+    else:
+        ax.bar(x, resultDf["win_prob"], width=width)
+
+    filterLabel = "" if filterCol is None else f" for {filterCol} - {filter}"
+    
+    ax.set_xticks(x)
+    ax.set_xticklabels(resultDf["stat"].str.replace("_", " "), rotation=45, ha="right")
+    ax.set_ylabel("P(Win | Dominated Stat)")
+    ax.set_title(f"How Match Stats Translate to Wins{filterLabel}")
+    ax.set_ylim(0, 1)
+
+    plt.tight_layout()
+    plt.show()
+
+def plotBarR2Stats(getTopN: int=15, daysSinceFirst: int|None=None, filterCol: str|None=None, filter: str="", relevanceThresh: float=0.1):
+    df = prepareForAgainstDf()
+
+    if daysSinceFirst:
+        df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
+    
+    regdf = getRegressionStats(df=df, filterCol=filterCol, filter=filter).head(n=getTopN)
+    regdf["sign"] = np.sign(regdf["coefficients"].apply(lambda x: x[0]))
+    regdf["colour"] = regdf["sign"].map({1: "tab:blue", -1: "tab:red", 0:"gray"})
+
+    filterLabel = "" if filterCol is None else f" for {filterCol} - {filter}"
+
+    plt.figure(figsize=(10, 6))
+    plt.bar(regdf["stat"].str.replace("_", " "), regdf["r2"], color=regdf["colour"])
+    
+    plt.axhline(y=relevanceThresh, color="black", linestyle="--", linewidth=1, alpha=0.5)
+    plt.text(len(regdf) - 2.5, relevanceThresh + 0.005, f"R2 threshold = {relevanceThresh:.2f}", color="black", fontsize=9, va="bottom")
+    
+    plt.ylabel("R2 value")
+    plt.title(f"Correlation of Match Stats with Goal Difference{filterLabel}")
+    plt.xticks(rotation=45, ha="right")
+
+    handles = [
+        plt.Line2D([0], [0], color="tab:blue", lw=6, label="Positive correlation"),
+        plt.Line2D([0], [0], color="tab:red", lw=6, label="Negative correlation"),
+    ]
+    plt.legend(handles=handles, loc="upper right")
+
+    plt.tight_layout()
     plt.show()
