@@ -1,4 +1,4 @@
-from .visualise import plotBarForAgainst, plotTimeForAgainst, plotBarWinningStats, plotBarR2Stats, plotXYWithRegression
+from .visualise import plotBarForAgainst, plotTimeForAgainst, plotBarWinningStats, plotBarR2Stats, plotXYWithLinearRegression
 
 if __name__=="__main__":
     method = "ema"
@@ -14,4 +14,4 @@ if __name__=="__main__":
 
     plotBarWinningStats(showHomeAway=True, filterCol=filterCol, filter=filter, window=40, method="ema")
     plotBarR2Stats(getTopN=30, daysSinceFirst=daysSinceFirst, filterCol=filterCol, filter=filter)
-    plotXYWithRegression(xCol="xg_for", yCol="goals_diff", daysSinceFirst=daysSinceFirst, filterCol=filterCol, filter=filter)
+    plotXYWithLinearRegression(xCol="xg_for", yCol="goals_diff", daysSinceFirst=daysSinceFirst, filterCol=filterCol, filter=filter)

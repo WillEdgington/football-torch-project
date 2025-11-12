@@ -4,7 +4,7 @@ import pandas as pd
 
 from .prepare_data import (
                         prepareForAgainstDf, addRollingLeagueDevsAndDiff, getMostRecentRows, cutoffByDate, prepareMatchDataFrame,
-                        getWinProbs, getRegressionStats, getXYAndLinearRegression
+                        getWinProbs, getLinearRegressionStats, getXYAndLinearRegression, getLogisticRegressionStats
                         )
 
 def plotScatterForAgainst(nameCol: str, valueCol: str, window: int=10, daysAgo: int|None=None,
@@ -116,7 +116,7 @@ def plotBarR2Stats(getTopN: int=15, daysSinceFirst: int|None=None, filterCol: st
     if daysSinceFirst:
         df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
     
-    regdf = getRegressionStats(df=df, filterCol=filterCol, filter=filter).head(n=getTopN)
+    regdf = getLinearRegressionStats(df=df, filterCol=filterCol, filter=filter).head(n=getTopN)
     regdf["sign"] = np.sign(regdf["coefficients"].apply(lambda x: x[0]))
     regdf["colour"] = regdf["sign"].map({1: "tab:blue", -1: "tab:red", 0:"gray"})
 
@@ -141,7 +141,7 @@ def plotBarR2Stats(getTopN: int=15, daysSinceFirst: int|None=None, filterCol: st
     plt.tight_layout()
     plt.show()
 
-def plotXYWithRegression(xCol: str, yCol: str, daysSinceFirst: int|None=None, filterCol: str|None=None, filter: str=""):
+def plotXYWithLinearRegression(xCol: str, yCol: str, daysSinceFirst: int|None=None, filterCol: str|None=None, filter: str=""):
     df = prepareForAgainstDf()
 
     if daysSinceFirst:

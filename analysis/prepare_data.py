@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
 import unicodedata
+import statsmodels.api as sm
 
+from scipy.stats import chi2
 from typing import Dict, Any, List, Tuple
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error
@@ -251,8 +253,8 @@ def getXYAndLinearRegression(df: pd.DataFrame=pd.DataFrame(), xKey: str|None=Non
     y = y if y is not None else df[yKey].values.reshape(-1, 1)
     return x, y, prepareLinearRegression(x, y)
     
-def getRegressionStats(df: pd.DataFrame, stats: List[str]|None=None, yKey: str="goals_diff", trackSufX: List[str]=["diff", "for", "against"],
-                       filterCol: str|None=None, filter: str="") -> pd.DataFrame:
+def getLinearRegressionStats(df: pd.DataFrame, stats: List[str]|None=None, yKey: str="goals_diff", trackSufX: List[str]=["diff", "for", "against"],
+                             filterCol: str|None=None, filter: str="") -> pd.DataFrame:
     for suf in trackSufX:
         assert suf in {"for", "against", "diff"}, f'invalid suffix to track for x in trackSufX ({suf}). "diff", "for", "against" are the only valid entries.'
     
@@ -287,3 +289,87 @@ def getRegressionStats(df: pd.DataFrame, stats: List[str]|None=None, yKey: str="
             results.append(lrdict)
             
     return pd.DataFrame(results).sort_values(by="r2", ascending=False)
+
+def createWDLCol(df: pd.DataFrame, colKey: str="win"):
+    df = df.copy().dropna(subset=["goals_for", "goals_against"])
+    match colKey:
+        case "win":
+            df[colKey] = (df["goals_for"] - df["goals_against"] > 0).astype(int)
+        case "loss":
+            df[colKey] = (df["goals_for"] - df["goals_against"] < 0).astype(int)
+        case "draw":
+            df[colKey] = (df["goals_for"] - df["goals_against"] == 0).astype(int)
+    return df
+
+def logisticRegressionSummary(df: pd.DataFrame, xKey: str, yKey: str) -> Dict[str, Any]:
+    assert xKey in df.columns, f"xKey ({xKey}) could not be found in df"
+    df = df.copy()
+    if yKey not in df.columns and yKey in {"win", "loss", "draw"}:
+        df = createWDLCol(df=df, colKey=yKey)
+
+    assert yKey in df.columns, f"yKey ({yKey}) could not be found in df"
+    df.dropna(subset=[xKey, yKey], inplace=True)
+    assert df[yKey].nunique() == 2, f"{yKey} must be binary (0/1)"
+
+    x = sm.add_constant(df[[xKey]])
+    y = df[yKey]
+
+    model = sm.Logit(y, x)
+    result = model.fit(disp=False)
+
+    LiRa = -2 * (result.llnull - result.llf)
+    pLR = 1 - chi2.cdf(LiRa, df=result.df_model)
+
+    coef = result.params[xKey]
+    confInt = result.conf_int().loc[xKey].tolist()
+    oddsRat = np.exp(coef)
+    oddsRatCI = np.exp(confInt)
+
+    return {
+        "stat": xKey,
+        "coefficient": coef,
+        "std_err": result.bse[xKey],
+        "z_score": result.tvalues[xKey],
+        "p_value": result.pvalues[xKey],
+        "odds_ratio": oddsRat,
+        "odds_ratio_ci_low": oddsRatCI[0],
+        "odds_ratio_ci_high": oddsRatCI[1],
+        "conf_low": confInt[0],
+        "conf_high": confInt[1],
+        "llf": result.llf,
+        "llnull": result.llnull,
+        "likelihood_ratio": LiRa,
+        "p_likelihood_ratio": pLR,
+        "observations": int(result.nobs)
+    }
+
+def getLogisticRegressionStats(df: pd.DataFrame, stats: List[str]|None=None, yKey: str="win", trackSufX: List[str]=["diff", "for", "against"],
+                               filterCol: str|None=None, filter: str=""):
+    for suf in trackSufX:
+        assert suf in {"for", "against", "diff"}, f'invalid suffix to track for x in trackSufX ({suf}). "diff", "for", "against" are the only valid entries.'
+    df = df.copy()    
+    if filterCol:
+        df = df[df[filterCol] == filter]
+    if yKey not in df.columns and yKey in {"win", "loss", "draw"}:
+        df = createWDLCol(df=df, colKey=yKey)
+    assert yKey in df.columns, f"yKey ({yKey}) could not be found in df"
+    df.dropna(subset=yKey, inplace=True)
+    assert df[yKey].nunique() == 2, f"{yKey} must be binary (0/1)"
+
+    if stats is None:
+        stats = [col.removesuffix("_for") for col in df.columns if col.endswith("_for")]
+
+    stats = [stat for stat in stats if f"{stat}_for" in df.columns and f"{stat}_against" in df.columns]
+    results = []
+
+    for stat in stats:
+        filteredDf = df.dropna(subset=[f"{stat}_for", f"{stat}_against"])
+        for suf in trackSufX:
+            if f"{stat}_{suf}" == "goals_diff":
+                continue
+            if suf == "diff":
+                filteredDf[f"{stat}_diff"] = filteredDf[f"{stat}_for"] - filteredDf[f"{stat}_against"]
+            regsum = logisticRegressionSummary(df=filteredDf, xKey=f"{stat}_{suf}", yKey=yKey)
+            results.append(regsum)
+    
+    return pd.DataFrame(results)
