@@ -168,3 +168,44 @@ def plotXYWithLinearRegression(xCol: str, yCol: str, daysSinceFirst: int|None=No
     plt.legend()
     plt.tight_layout()
     plt.show()
+
+def plotOddsRatioStats(getMostSigN: int=20, daysSinceFirst: int|None=None, filterCol: str|None=None, filter: str="", yKey: str="win", pSigLevel: float=0.05):
+    assert yKey in {"win", "loss", "draw"}, f'yKey ({yKey}) must be either "win", "loss", or "draw"'
+    df = prepareForAgainstDf()
+    
+    if daysSinceFirst:
+        df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
+
+    df = getLogisticRegressionStats(df=df, yKey=yKey, filterCol=filterCol, filter=filter)
+    statCount = len(df)
+    df = df[df["p_value"] < pSigLevel].sort_values("p_value")
+    sigCount = len(df)
+    df = df.head(n=getMostSigN).sort_values("odds_ratio_std")
+    statLabels = df["stat"].str.replace("_", " ").str.replace(" diff", " difference").str.title()
+
+    plt.figure(figsize=(10, 6))
+    plt.errorbar(df["odds_ratio_std"], 
+                 statLabels,
+                 xerr=[df["odds_ratio_std"] - df["odds_ratio_std_ci_low"],
+                       df["odds_ratio_std_ci_high"] - df["odds_ratio_std"]],
+                 fmt='o',
+                 ecolor='gray',
+                 elinewidth=1.2,
+                 capsize=3,
+                 markersize=6,
+                 mfc='dodgerblue',
+                 mec='black',
+                 alpha=0.85)
+    plt.axvline(1, color="gray", linestyle="--")
+    plt.xscale("log")
+    plt.yticks(fontsize=11, fontweight='medium')
+
+    filterLabel = "" if filterCol is None else f" for {filterCol.title()} - {filter.title()}"
+    plt.xlabel("Odds Ratio (log scale)")
+    plt.title(f"Effect of Match Stats on {yKey.title()} Probability{filterLabel}")
+
+    text = f'Observations: {df["observations"].max()}\nSignificant Stats (p<0.05): {sigCount}/{statCount}'
+    plt.text(0.05, 0.95, text, transform=plt.gca().transAxes,
+            fontsize=11, verticalalignment="top",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.5))
+    plt.show()

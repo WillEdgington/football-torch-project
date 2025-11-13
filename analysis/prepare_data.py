@@ -321,9 +321,13 @@ def logisticRegressionSummary(df: pd.DataFrame, xKey: str, yKey: str) -> Dict[st
     pLR = 1 - chi2.cdf(LiRa, df=result.df_model)
 
     coef = result.params[xKey]
+    sigma = df[xKey].std()
     confInt = result.conf_int().loc[xKey].tolist()
+    
     oddsRat = np.exp(coef)
+    oddsRatScaled = np.exp(coef * sigma)
     oddsRatCI = np.exp(confInt)
+    oddsRatScaledCI = np.exp(np.array(confInt) * sigma)
 
     return {
         "stat": xKey,
@@ -334,6 +338,9 @@ def logisticRegressionSummary(df: pd.DataFrame, xKey: str, yKey: str) -> Dict[st
         "odds_ratio": oddsRat,
         "odds_ratio_ci_low": oddsRatCI[0],
         "odds_ratio_ci_high": oddsRatCI[1],
+        "odds_ratio_std": oddsRatScaled,
+        "odds_ratio_std_ci_low": oddsRatScaledCI[0],
+        "odds_ratio_std_ci_high": oddsRatScaledCI[1],
         "conf_low": confInt[0],
         "conf_high": confInt[1],
         "llf": result.llf,
@@ -363,7 +370,7 @@ def getLogisticRegressionStats(df: pd.DataFrame, stats: List[str]|None=None, yKe
     results = []
 
     for stat in stats:
-        filteredDf = df.dropna(subset=[f"{stat}_for", f"{stat}_against"])
+        filteredDf = df.copy().dropna(subset=[f"{stat}_for", f"{stat}_against"])
         for suf in trackSufX:
             if f"{stat}_{suf}" == "goals_diff":
                 continue
