@@ -1,10 +1,17 @@
 import pandas as pd
 import numpy as np
+import unicodedata
 
 from typing import Tuple, List, Dict, Any
 
 from .config import DBRAWDIR, DBRAWNAME, DBDIR, DBNAME, METADATATABLE, MATCHTABLE
 from .database_objects import DatabaseReader, DatabaseWriter
+
+def removeAccents(text: str):
+    if not isinstance(text, str):
+        return text
+    normalised = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in normalised if not unicodedata.combining(c))
 
 def loadRawData(dbDir: str=DBRAWDIR, dbName: str=DBRAWNAME, asDf: bool=True) -> Tuple[List[Any] | pd.DataFrame, List[Any] | pd.DataFrame]:
     with DatabaseReader(dbDir=dbDir, dbName=dbName) as db:
@@ -37,6 +44,9 @@ def processMetaDataframe(metaDf: pd.DataFrame, dropCols: List[str]=[]) -> pd.Dat
             metaDf[col].astype(str)
             .str.replace(",", "", regex=False)
             .replace("None", "")
+            .apply(removeAccents)
+            .str.lower()
+            .str.replace("-", " ")
         )
         try:
             metaDf[col] = pd.to_numeric(metaDf[col])
@@ -60,6 +70,9 @@ def processStatsDataframe(statsDf: pd.DataFrame, dropCols: List[str]=[]) -> pd.D
             statsDf[col].astype(str)
             .str.replace(",", "", regex=False)
             .replace("None", "")
+            .apply(removeAccents)
+            .str.lower()
+            .str.replace("-", " ")
         )
         try:
             statsDf[col] = pd.to_numeric(statsDf[col])
@@ -105,7 +118,3 @@ def cleanFbrefData(rawDir: str=DBRAWDIR, rawName: str=DBRAWNAME,
     writeCleanDfToDB(df=cleanDf, dbDir=cleanDir, dbName=cleanName, mute=mute, overwrite=overwrite)
 
     return cleanDf
-
-# metaDf, statsDf = loadRawData(DBRAWDIR, DBRAWNAME, asDf=True)
-# print(f"match_metadata:\n{metaDf.columns}\n\nmatch_data:\n{statsDf.columns}")
-# transformDataframes(metaDf, statsDf)
