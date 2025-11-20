@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import unicodedata
 import statsmodels.api as sm
 
 from scipy.stats import chi2
@@ -9,34 +8,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error
 from numpy.typing import ArrayLike
 
-from fbref_scraper import DatabaseReader, DBDIR, DBNAME, MATCHTABLE
-
-def removeAccents(text: str):
-    if not isinstance(text, str):
-        return text
-    normalised = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in normalised if not unicodedata.combining(c))
-
-def prepareMatchDataFrame(dbDir: str=DBDIR, dbName: str=DBNAME) -> pd.DataFrame:
-    with DatabaseReader(dbDir=dbDir, dbName=dbName) as db:
-        df = db.selectAll(tableName=MATCHTABLE, asDf=True)
-    
-    if isinstance(df, pd.DataFrame):
-        for col in df.columns:
-            if col == "date" or df[col].dtype != "object":
-                continue
-
-            try:
-                df[col] = pd.to_numeric(df[col])
-            except ValueError:
-                df[col] = df[col].apply(removeAccents).str.lower()
-                df[col] = df[col].str.replace("-", " ")
-                continue
-
-        df["date"] = pd.to_datetime(df["date"])
-        df.sort_values(by='date')
-        return df
-    return pd.DataFrame()
+from utils import prepareMatchDataFrame
 
 def prepareForAgainstDf(df: pd.DataFrame=prepareMatchDataFrame()) -> pd.DataFrame:
     homeCols = [col for col in df.columns if col.startswith("home_")]
