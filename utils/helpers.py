@@ -14,7 +14,9 @@ def prepareMatchDataFrame(dbDir: str=DBDIR, dbName: str=DBNAME) -> pd.DataFrame:
             try:
                 df[col] = pd.to_numeric(df[col])
             except ValueError:
-                df[col] = df[col].str.replace("-", " ")
+                if col not in {"match_url", "season"}:
+                    df[col] = df[col].str.replace("-", " ")
+                    df[col] = df[col].str.replace("   ", " - ")
                 continue
 
         df["date"] = pd.to_datetime(df["date"])

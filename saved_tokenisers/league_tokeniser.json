@@ -1,0 +1,20 @@
+{
+  "stoid": {
+    "<pad>": 0,
+    "<unk>": 1,
+    "premier league": 2,
+    "la liga": 3,
+    "serie a": 4,
+    "bundesliga": 5,
+    "ligue 1": 6
+  },
+  "idtos": [
+    "<pad>",
+    "<unk>",
+    "premier league",
+    "la liga",
+    "serie a",
+    "bundesliga",
+    "ligue 1"
+  ]
+}

@@ -46,7 +46,7 @@ def focalForAgainstDf(*calcDifFor: str, df: pd.DataFrame, colKey: str, name: str
     if "home_team" in df.columns:
         df = prepareForAgainstDf(df)
 
-    df = df.loc[df[colKey].apply(removeAccents).str.lower() == removeAccents(name).lower()]
+    df = df.loc[df[colKey] == name]
 
     for col in calcDifFor:
         if f"{col}_for" not in df.columns or f"{col}_against" not in df.columns or f"{col}_diff" in df.columns:
