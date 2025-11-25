@@ -6,7 +6,7 @@ from fbref_scraper import DatabaseReader, DBDIR, DBNAME, MATCHTABLE
 
 def prepareMatchDataFrame(dbDir: str=DBDIR, dbName: str=DBNAME, 
                           dropNArows: List[str]|None=["home_goals", "away_goals"], 
-                          dropCols: List[str]|None=["match_id", "id", "match_url"]) -> pd.DataFrame:
+                          dropCols: List[str]|None=["id", "match_url"]) -> pd.DataFrame:
     with DatabaseReader(dbDir=dbDir, dbName=dbName) as db:
         df = db.selectAll(tableName=MATCHTABLE, asDf=True)
 
