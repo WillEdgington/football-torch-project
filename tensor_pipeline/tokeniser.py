@@ -4,10 +4,20 @@ from pathlib import Path
 from pandas import Series
 from typing import Any
 
+from .config import TOKENISERDIR
+
 class Tokeniser:
-    def __init__(self, train: bool=True, fileName: str|None=None, fileDir: str|None="saved_tokenisers"):
-        self.stoid = {"<pad>": 0, "<unk>": 1}
-        self.idtos = ["<pad>", "<unk>"]
+    def __init__(self, train: bool=True, unkBuckets: int=32, fileName: str|None=None, fileDir: str|None=TOKENISERDIR):
+        self.unkBuckets = unkBuckets
+        assert self.unkBuckets > 0, "number of <unk> buckets (unkBuckets) must be atleast 1."
+        
+        self.stoid = {"<pad>": 0}
+        self.idtos = ["<pad>"]
+        
+        for i in range(unkBuckets):
+            self.stoid[f"<unk_{i}>"] = 1 + i
+            self.idtos.append(f"<unk_{i}>")
+
         self.train = train
         self.unkCount = 0
         self.fileName = fileName
@@ -22,18 +32,21 @@ class Tokeniser:
             self.idtos.append(token)
             return newID
         self.unkCount += 1
-        return self.stoid["<unk>"]
+        key = (hash(token) % self.unkBuckets)
+        return self.stoid[f"<unk_{key}>"]
     
     def encodeSeries(self, series: Series) -> Series:
         return series.apply(self.getId).astype("int32")
     
     def state_dict(self):
         return {
+            "unkBuckets": self.unkBuckets,
             "stoid": self.stoid,
             "idtos": self.idtos
         }
     
     def load_state_dict(self, state):
+        self.unkBuckets = state["unkBuckets"]
         self.stoid = state["stoid"]
         self.idtos = state["idtos"]
 

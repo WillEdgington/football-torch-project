@@ -1,7 +1,8 @@
 {
+  "unkBuckets": 1,
   "stoid": {
     "<pad>": 0,
-    "<unk>": 1,
+    "<unk_0>": 1,
     "fri": 2,
     "sat": 3,
     "sun": 4,
@@ -12,7 +13,7 @@
   },
   "idtos": [
     "<pad>",
-    "<unk>",
+    "<unk_0>",
     "fri",
     "sat",
     "sun",

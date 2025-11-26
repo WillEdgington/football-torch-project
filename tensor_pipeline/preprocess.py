@@ -4,17 +4,20 @@ from typing import Tuple, List
 
 from utils import prepareMatchDataFrame
 from .tokeniser import Tokeniser
+from .config import UNKBUCKETDICT, TOKENISERDIR
 
-def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str="saved_tokenisers") -> pd.DataFrame:
+def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR) -> pd.DataFrame:
     df = df.copy()
     for col in df.columns:
         if df[col].dtype != "object" or col == "match_url":
             continue
-        fileName = f"{col}_tokeniser.json"
-        if col.startswith("home_") or col.startswith("away_"):
-            fileName = fileName.removeprefix("home_").removeprefix("away_")
+        base = col
+        if base.startswith("home_") or base.startswith("away_"):
+            base = base.removeprefix("home_").removeprefix("away_")
+        fileName = f"{base}_tokeniser.json"
         
-        with Tokeniser(train=train, fileName=fileName, fileDir=fileDir) as tkn:
+        unkBuckets = UNKBUCKETDICT.get(base, 32)
+        with Tokeniser(train=train, unkBuckets=unkBuckets, fileName=fileName, fileDir=fileDir) as tkn:
             df[f"{col}_token"] = tkn.encodeSeries(df[col])
 
     return df
@@ -102,7 +105,10 @@ def addDaysSinceLastGame(df: pd.DataFrame) -> pd.DataFrame:
 
 # df = prepareMatchDataFrame()
 # print(f"Dataframe columns ({len(df.columns)}):\n{df.columns}")
-# train, test, val = getTemporalSplits(df, valSplit=0.2)
+# trainDf, testDf, valDf = getTemporalSplits(df, valSplit=0.2)
 
-# print(f"(n-rows) train: {len(train)}/{len(df)}, validation: {len(val)}/{len(df)}, test: {len(test)}/{len(df)}")
+# print(f"(n-rows) train: {len(trainDf)}/{len(df)}, validation: {len(valDf)}/{len(df)}, test: {len(testDf)}/{len(df)}")
+# trainDF = tokenise(df=trainDf, train=True)
+# testDf = tokenise(df=testDf, train=False)
+# print(testDf[testDf["league"] == "premier league"][testDf["home_manager_token"] <= 32][["date", "league", "home_team", "home_manager", "home_manager_token", "away_team"]])
 # print(addDaysSinceLastGame(df=train)[["home_days_since_last_game", "away_days_since_last_game"]])

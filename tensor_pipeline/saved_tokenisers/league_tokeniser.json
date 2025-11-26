@@ -1,0 +1,21 @@
+{
+  "unkBuckets": 1,
+  "stoid": {
+    "<pad>": 0,
+    "<unk_0>": 1,
+    "ligue 1": 2,
+    "premier league": 3,
+    "la liga": 4,
+    "bundesliga": 5,
+    "serie a": 6
+  },
+  "idtos": [
+    "<pad>",
+    "<unk_0>",
+    "ligue 1",
+    "premier league",
+    "la liga",
+    "bundesliga",
+    "serie a"
+  ]
+}
