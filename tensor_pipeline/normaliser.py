@@ -1,70 +1,68 @@
 import json
 
 from pathlib import Path
+from typing import Dict, Any
 from pandas import Series
-from typing import Any, Dict
 
-from .config import TOKENISERDIR
+from .config import NORMALISERDIR
 
-class Tokeniser:
-    def __init__(self, train: bool=True, unkBuckets: int=32, fileName: str|None=None, fileDir: str|None=TOKENISERDIR):
-        self.unkBuckets = unkBuckets
-        assert self.unkBuckets > 0, "number of <unk> buckets (unkBuckets) must be atleast 1."
-        
-        self.stoid = {"<pad>": 0}
-        self.idtos = ["<pad>"]
-        
-        for i in range(unkBuckets):
-            self.stoid[f"<unk_{i}>"] = 1 + i
-            self.idtos.append(f"<unk_{i}>")
+class Normaliser:
+    def __init__(self, eps: float=1e-8, train: bool=True, fileName: str|None=None, fileDir: str|None=NORMALISERDIR):
+        self.eps = eps
+        self.params = {}
 
         self.train = train
-        self.unkCount = 0
         self.fileName = fileName
         self.fileDir = fileDir
-    
-    def getId(self, token: str) -> int:
-        if token in self.stoid:
-            return self.stoid[token]
-        if self.train:
-            newID = len(self.idtos)
-            self.stoid[token] = newID
-            self.idtos.append(token)
-            return newID
-        self.unkCount += 1
-        key = (hash(token) % self.unkBuckets)
-        return self.stoid[f"<unk_{key}>"]
-    
-    def encodeSeries(self, series: Series) -> Series:
-        return series.apply(self.getId).astype("int32")
+
+    def fit(self, series: Series, col: str|None=None):
+        assert self.train, "normaliser must be in train mode to enable fitting abilities"
+        assert str(series.dtype) in {"float64", "int64"}
+        assert col or series.name, "col or series.name must be a string type"
+        col = str(series.name) if col is None else col
+
+        self.params[col] = {
+            "mean": float(series.mean()),
+            "std": max(self.eps, float(series.std())),
+            "low": float(series.min()),
+            "high": float(series.max())
+        }
+            
+    def encodeSeries(self, series: Series, col: str|None=None, method: str="standard", fit: bool=True) -> Series:
+        assert method in {"standard", "minmax"}, 'invalid method input, Choose between: "standard", "minmax"'
+        if col is None:
+            col = str(series.name)
+        if self.train and fit:
+            self.fit(series, col)
+
+        p = self.params[col]
+        return (series - p["mean"]) / p["std"] if method == "standard" else (series - p["low"]) / (p["high"] - p["low"])     
     
     def state_dict(self) -> Dict[str, Any]:
         return {
-            "unkBuckets": self.unkBuckets,
-            "stoid": self.stoid,
-            "idtos": self.idtos
+            "eps": self.eps,
+            "params": self.params
         }
     
     def load_state_dict(self, state: Dict[str, Any]):
-        self.unkBuckets = state["unkBuckets"]
-        self.stoid = state["stoid"]
-        self.idtos = state["idtos"]
+        self.eps = state["eps"]
+        self.params = state["params"]
 
     def saveJson(self, fileName: str|None=None, fileDir: str|None=None):
         fileName = self.fileName if fileName is None else fileName
         fileDir = self.fileDir if fileDir is None else fileDir
-        
+
         assert fileDir is not None, "Need a file directory. Set object.fileDir or pass directory name through method"
         assert fileName is not None, "Need a file Name. Set object.fileName or pass file name through method"
         assert fileName.endswith(".json"), f"file must be JSON. fileName: {fileName}"
-        
+
         dirPath = Path(fileDir)
         dirPath.mkdir(parents=True, exist_ok=True)
         
         filePath = Path(fileDir) / fileName
         with open(filePath, "w") as f:
             json.dump(self.state_dict(), f, indent=2)
-    
+
     def loadJson(self, fileName: str|None=None, fileDir: str|None=None):
         fileName = self.fileName if fileName is None else fileName
         fileDir = self.fileDir if fileDir is None else fileDir
@@ -83,7 +81,7 @@ class Tokeniser:
 
     def freeze(self):
         self.train = False
-
+    
     def __enter__(self):
         try:
             self.loadJson()

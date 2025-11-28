@@ -1,12 +1,14 @@
 import pandas as pd
 
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 
 from utils import prepareMatchDataFrame
 from .tokeniser import Tokeniser
-from .config import UNKBUCKETDICT, TOKENISERDIR
+from .normaliser import Normaliser
+from .config import UNKBUCKETDICT, TOKENISERDIR, NORMALISERDIR
 
-def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR) -> pd.DataFrame:
+def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR, 
+             unkBucketDict: Dict[str, int]=UNKBUCKETDICT) -> pd.DataFrame:
     df = df.copy()
     for col in df.columns:
         if df[col].dtype != "object" or col == "match_url":
@@ -16,10 +18,45 @@ def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR) -> p
             base = base.removeprefix("home_").removeprefix("away_")
         fileName = f"{base}_tokeniser.json"
         
-        unkBuckets = UNKBUCKETDICT.get(base, 32)
+        unkBuckets = unkBucketDict.get(base, 16)
         with Tokeniser(train=train, unkBuckets=unkBuckets, fileName=fileName, fileDir=fileDir) as tkn:
             df[f"{col}_token"] = tkn.encodeSeries(df[col])
 
+    return df
+
+def normalise(df: pd.DataFrame, train: bool=True, eps: float=1e-8,
+              columns: List[str]=[], typeFilter: str|None="float64", method: str="standard",
+              fileDir: str=NORMALISERDIR, fileName: str="numeric_normaliser.json") -> pd.DataFrame:
+    assert method in {"standard", "minmax"}, 'invalid method input, Choose between: "standard", "minmax"'
+    assert typeFilter is None or typeFilter in {"float64", "int64"}, 'typeFilter must be "float64", "int64", or None'
+    typeFilters = {typeFilter} if typeFilter else {"float64", "int64"}
+
+    if len(columns) == 0:
+        for col in df.columns:
+            if str(df[col].dtype) not in typeFilters:
+                continue
+            columns.append(col)
+
+    with Normaliser(eps=eps, train=train, fileName=fileName, fileDir=fileDir) as nrm:
+        for col in columns:
+            if not col.startswith("home_"):
+                continue
+            base = col.removeprefix("home_")
+            nrm.fit(pd.concat([
+                df[f"home_{base}"], 
+                df[f"away_{base}"]
+                ]), col=base)
+
+        for col in columns:
+            if col not in df.columns:
+                continue
+            fit = True
+            base = col
+            if base.startswith("home_") or base.startswith("away_"):
+                fit = False
+                base = col.removeprefix("home_").removeprefix("away_")
+            
+            df[f"{col}_normalised"] = nrm.encodeSeries(df[col], col=base, method=method, fit=fit)
     return df
 
 def splitDataFrame(df: pd.DataFrame, trainSplit: float=0.8) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -108,6 +145,8 @@ def addDaysSinceLastGame(df: pd.DataFrame) -> pd.DataFrame:
 # trainDf, testDf, valDf = getTemporalSplits(df, valSplit=0.2)
 
 # print(f"(n-rows) train: {len(trainDf)}/{len(df)}, validation: {len(valDf)}/{len(df)}, test: {len(testDf)}/{len(df)}")
+# trainDf = normalise(df=trainDf)
+# print(trainDf.columns)
 # trainDF = tokenise(df=trainDf, train=True)
 # testDf = tokenise(df=testDf, train=False)
 # print(testDf[testDf["league"] == "premier league"][testDf["home_manager_token"] <= 32][["date", "league", "home_team", "home_manager", "home_manager_token", "away_team"]])
