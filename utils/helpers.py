@@ -12,6 +12,8 @@ def prepareMatchDataFrame(dbDir: str=DBDIR, dbName: str=DBNAME,
 
     if isinstance(df, pd.DataFrame):
         for col in df.columns:
+            if col == "match_id":
+                df[col] = df[col].astype("int64")
             if col == "date" or df[col].dtype != "object":
                 continue
 
