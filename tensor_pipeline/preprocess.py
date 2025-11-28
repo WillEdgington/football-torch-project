@@ -139,6 +139,18 @@ def addDaysSinceLastGame(df: pd.DataFrame) -> pd.DataFrame:
     df = mergeLongDfBackToMatchDf(df=df, longDf=longDf)
     return df
 
+def matchDfToPerTeamDfs(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    assert "home_team" in df.columns and "away_team" in df.columns, 'df must have columns "home_team" and "away_team"'
+    home = df.copy()
+    home["team"] = home["home_team"]
+
+    away = df.copy()
+    away["team"] = away["away_team"]
+
+    longDf = pd.concat([home, away], ignore_index=True)
+    teams = {str(team): g.sort_values("date").reset_index(drop=True).drop(columns=["team"])
+             for team, g in longDf.groupby("team")}
+    return teams
 
 # df = prepareMatchDataFrame()
 # print(f"Dataframe columns ({len(df.columns)}):\n{df.columns}")
@@ -151,3 +163,4 @@ def addDaysSinceLastGame(df: pd.DataFrame) -> pd.DataFrame:
 # testDf = tokenise(df=testDf, train=False)
 # print(testDf[testDf["league"] == "premier league"][testDf["home_manager_token"] <= 32][["date", "league", "home_team", "home_manager", "home_manager_token", "away_team"]])
 # print(addDaysSinceLastGame(df=train)[["home_days_since_last_game", "away_days_since_last_game"]])
+# print(matchDfToPerTeamDfs(df=df)["manchester united"].head(n=40)[["date", "home_team", "away_team", "home_goals", "away_goals"]])
