@@ -39,24 +39,23 @@ def normalise(df: pd.DataFrame, train: bool=True, eps: float=1e-8,
 
     with Normaliser(eps=eps, train=train, fileName=fileName, fileDir=fileDir) as nrm:
         for col in columns:
-            if not col.startswith("home_"):
+            if col.startswith("away_"):
                 continue
-            base = col.removeprefix("home_")
-            nrm.fit(pd.concat([
-                df[f"home_{base}"], 
-                df[f"away_{base}"]
-                ]), col=base)
+            if col.startswith("home_"):
+                base = col.removeprefix("home_")
+                nrm.fit(pd.concat([
+                    df[f"home_{base}"], 
+                    df[f"away_{base}"]
+                    ]), col=base)
+                continue
+            nrm.fit(df[col])
 
         for col in columns:
             if col not in df.columns:
                 continue
-            fit = True
-            base = col
-            if base.startswith("home_") or base.startswith("away_"):
-                fit = False
-                base = col.removeprefix("home_").removeprefix("away_")
-            
-            df[f"{col}_normalised"] = nrm.encodeSeries(df[col], col=base, method=method, fit=fit)
+            base = col[5:] if col.startswith("home_") or col.startswith("away_") else col
+            df[col] = df[col].fillna(value=nrm.params[base]["mean"])          
+            df[f"{col}_normalised"] = nrm.encodeSeries(df[col], col=base, method=method, fit=False)
     return df
 
 def splitDataFrame(df: pd.DataFrame, trainSplit: float=0.8) -> Tuple[pd.DataFrame, pd.DataFrame]:
