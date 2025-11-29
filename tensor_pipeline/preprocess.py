@@ -157,17 +157,14 @@ def createY():
 
 def buildTeamWindows(teamDf: pd.DataFrame, 
                      featureCols: list[str], 
-                     seqLen: int=20) -> Tuple[List[np.ndarray], List[np.ndarray], List[int]]:
+                     seqLen: int=20) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
     teamDf = teamDf.sort_values("date").reset_index(drop=True)
-    xList = []
-    maskList = []
     matchIds = teamDf["match_id"].tolist()
     
     featN = len(featureCols)
     window = np.repeat(np.zeros(featN, dtype=np.float32).reshape(1, -1), seqLen, axis=0)
     mask = np.array([0]*(seqLen), dtype=np.int32)
-    xList.append(window.copy())
-    maskList.append(mask.copy())
+    windows = {matchIds[0]: (window.copy(), mask.copy())}
     for i in range(len(matchIds) - 1):
         prevMatch = teamDf[teamDf["match_id"] == matchIds[i]][featureCols].to_numpy(dtype=np.float32)
         if mask[0] != 1:
@@ -175,11 +172,14 @@ def buildTeamWindows(teamDf: pd.DataFrame,
             mask = np.roll(mask, shift=-1)
         window[0] = prevMatch.copy()
         window = np.roll(window, shift=-featN)
+        windows[matchIds[i + 1]] = (window.copy(), mask.copy())
 
-        xList.append(window.copy())
-        maskList.append(mask.copy())
+    return windows
 
-    return xList, maskList, matchIds
+def buildAllWindows(teamDfs: Dict[str, pd.DataFrame],
+                    featureCols: list[str], 
+                    seqLen: int=20):
+    pass
 
 # df = prepareMatchDataFrame()
 # trainDf, testDf, valDf = getTemporalSplits(df, valSplit=0.2)
