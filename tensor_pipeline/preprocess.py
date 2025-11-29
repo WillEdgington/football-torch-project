@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 from typing import Tuple, List, Dict
 
@@ -151,15 +152,44 @@ def matchDfToPerTeamDfs(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
              for team, g in longDf.groupby("team")}
     return teams
 
+def createY():
+    pass
+
+def buildTeamWindows(teamDf: pd.DataFrame, 
+                     featureCols: list[str], 
+                     seqLen: int=20) -> Tuple[List[np.ndarray], List[np.ndarray], List[int]]:
+    teamDf = teamDf.sort_values("date").reset_index(drop=True)
+    xList = []
+    maskList = []
+    matchIds = teamDf["match_id"].tolist()
+    
+    featN = len(featureCols)
+    window = np.repeat(np.zeros(featN, dtype=np.float32).reshape(1, -1), seqLen, axis=0)
+    mask = np.array([0]*(seqLen), dtype=np.int32)
+    xList.append(window.copy())
+    maskList.append(mask.copy())
+    for i in range(len(matchIds) - 1):
+        prevMatch = teamDf[teamDf["match_id"] == matchIds[i]][featureCols].to_numpy(dtype=np.float32)
+        if mask[0] != 1:
+            mask[0] = 1
+            mask = np.roll(mask, shift=-1)
+        window[0] = prevMatch.copy()
+        window = np.roll(window, shift=-featN)
+
+        xList.append(window.copy())
+        maskList.append(mask.copy())
+
+    return xList, maskList, matchIds
+
 # df = prepareMatchDataFrame()
-# print(f"Dataframe columns ({len(df.columns)}):\n{df.columns}")
 # trainDf, testDf, valDf = getTemporalSplits(df, valSplit=0.2)
 
 # print(f"(n-rows) train: {len(trainDf)}/{len(df)}, validation: {len(valDf)}/{len(df)}, test: {len(testDf)}/{len(df)}")
 # trainDf = normalise(df=trainDf)
-# print(trainDf.columns)
-# trainDF = tokenise(df=trainDf, train=True)
-# testDf = tokenise(df=testDf, train=False)
-# print(testDf[testDf["league"] == "premier league"][testDf["home_manager_token"] <= 32][["date", "league", "home_team", "home_manager", "home_manager_token", "away_team"]])
-# print(addDaysSinceLastGame(df=train)[["home_days_since_last_game", "away_days_since_last_game"]])
-# print(matchDfToPerTeamDfs(df=df)["manchester united"].head(n=40)[["date", "home_team", "away_team", "home_goals", "away_goals"]])
+# trainDf = tokenise(df=trainDf, train=True)
+# featureCols = ["home_team_token", "away_team_token", "home_goals_normalised", "away_goals_normalised"]
+# teamDfs = matchDfToPerTeamDfs(df=trainDf)
+# mutdX, mutdMasks, mutdIds = buildTeamWindows(teamDf=teamDfs["manchester united"], 
+#                                featureCols=featureCols)
+# print(teamDfs["manchester united"][["match_id"] + featureCols].head(n=25))
+# print(mutdIds[:25])
