@@ -1,3 +1,4 @@
+import torch
 import pandas as pd
 import numpy as np
 
@@ -6,6 +7,7 @@ from typing import Tuple, List, Dict
 from utils import prepareMatchDataFrame
 from .tokeniser import Tokeniser
 from .normaliser import Normaliser
+from .match_dataset import MatchDataset
 from .config import UNKBUCKETDICT, TOKENISERDIR, NORMALISERDIR
 
 def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR, 
@@ -152,8 +154,14 @@ def matchDfToPerTeamDfs(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
              for team, g in longDf.groupby("team")}
     return teams
 
-def createY():
-    pass
+def createY(df: pd.DataFrame, yCols: List[str]|str="result") -> pd.DataFrame:
+    df = df.copy()
+    yCols = ["match_id", yCols] if isinstance(yCols, str) else ["match_id"] + yCols
+    if "result" in yCols:
+        df["goal_diff"] = df["home_goals"] - df["home_goals"]
+        df["result"] = df["goal_diff"].apply(lambda gd: 1 if gd > 0 else (-1 if gd < 0 else 0))
+    
+    return df[yCols]
 
 def buildTeamWindows(teamDf: pd.DataFrame, 
                      featureCols: list[str], 
@@ -176,20 +184,47 @@ def buildTeamWindows(teamDf: pd.DataFrame,
 
     return windows
 
-def buildAllWindows(teamDfs: Dict[str, pd.DataFrame],
-                    featureCols: list[str], 
-                    seqLen: int=20):
-    pass
+def buildAllWindows(df: pd.DataFrame,
+                    featureCols: list[str],
+                    yCols: List[str]|str|None=None,
+                    seqLen: int=20) -> MatchDataset:
+    """Set yCols to None to get columns with numeric values from featureCols as Y"""
+    if yCols is None:
+        yCols = [col for col in featureCols if col in df.columns and str(df[col].dtype) in {"float64", "int64"}]
+    
+    teamDfs = matchDfToPerTeamDfs(df=df)
+    Ydf = createY(df=df, yCols=yCols)
+    teamWindows = {
+        team: buildTeamWindows(teamDf=tdf, featureCols=featureCols, seqLen=seqLen) 
+        for team, tdf in teamDfs.items()
+        }
+    
+    Xhome = []
+    Xaway = []
+    Mhome = []
+    Maway = []
+    Yarr = []
 
-# df = prepareMatchDataFrame()
-# trainDf, testDf, valDf = getTemporalSplits(df, valSplit=0.2)
+    for matchId, homeTeam, awayTeam in zip(df["match_id"], df["home_team"], df["away_team"]):
+        Xh, Mh = teamWindows[homeTeam][matchId]
+        Xa, Ma = teamWindows[awayTeam][matchId]
+        Y = Ydf[Ydf["match_id"] == matchId].values.astype(np.float32)
+        Xhome.append(Xh)
+        Xaway.append(Xa)
+        Mhome.append(Mh)
+        Maway.append(Ma)
+        Yarr.append(Y)
+    
+    Xhome = np.stack(Xhome)
+    Xaway = np.stack(Xaway)
+    Mhome = np.stack(Mhome)
+    Maway = np.stack(Maway)
+    Y  = np.stack(Yarr)
 
-# print(f"(n-rows) train: {len(trainDf)}/{len(df)}, validation: {len(valDf)}/{len(df)}, test: {len(testDf)}/{len(df)}")
-# trainDf = normalise(df=trainDf)
-# trainDf = tokenise(df=trainDf, train=True)
-# featureCols = ["home_team_token", "away_team_token", "home_goals_normalised", "away_goals_normalised"]
-# teamDfs = matchDfToPerTeamDfs(df=trainDf)
-# mutdX, mutdMasks, mutdIds = buildTeamWindows(teamDf=teamDfs["manchester united"], 
-#                                featureCols=featureCols)
-# print(teamDfs["manchester united"][["match_id"] + featureCols].head(n=25))
-# print(mutdIds[:25])
+    return MatchDataset(
+        Xhome=torch.from_numpy(Xhome),
+        Xaway=torch.from_numpy(Xaway),
+        maskHome=torch.from_numpy(Mhome),
+        maskAway=torch.from_numpy(Maway),
+        Y=torch.from_numpy(Y)
+    )
