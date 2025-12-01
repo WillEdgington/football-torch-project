@@ -11,3 +11,8 @@ UNKBUCKETDICT = {
 
 TOKENISERDIR = "tensor_pipeline/saved_tokenisers"
 NORMALISERDIR = "tensor_pipeline/saved_normalisers"
+
+TENSORSDIR = "data/tensors"
+TRAINDATADIR = TENSORSDIR + "/train"
+VALDATADIR = TENSORSDIR + "/val"
+TESTDATADIR = TENSORSDIR + "/test"

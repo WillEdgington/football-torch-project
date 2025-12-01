@@ -189,6 +189,8 @@ def buildAllWindows(df: pd.DataFrame,
                     yCols: List[str]|str|None=None,
                     seqLen: int=20) -> MatchDataset:
     """Set yCols to None to get columns with numeric values from featureCols as Y"""
+    if isinstance(yCols, str):
+        yCols = [yCols]
     if yCols is None:
         yCols = [col for col in featureCols if col in df.columns and str(df[col].dtype) in {"float64", "int64"}]
     
@@ -226,5 +228,8 @@ def buildAllWindows(df: pd.DataFrame,
         Xaway=torch.from_numpy(Xaway),
         maskHome=torch.from_numpy(Mhome),
         maskAway=torch.from_numpy(Maway),
-        Y=torch.from_numpy(Y)
+        Y=torch.from_numpy(Y),
+        featureCols=featureCols,
+        yCols=yCols,
+        unkBucketDict=UNKBUCKETDICT
     )
