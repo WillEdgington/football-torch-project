@@ -2,6 +2,7 @@ import torch
 import pandas as pd
 import numpy as np
 
+from torch.utils.data import DataLoader
 from typing import Tuple, List, Dict
 
 from utils import prepareMatchDataFrame
@@ -193,7 +194,7 @@ def buildAllWindows(df: pd.DataFrame,
     if isinstance(yCols, str):
         yCols = [yCols]
     if yCols is None:
-        yCols = [col for col in featureCols if col in df.columns and str(df[col].dtype) in {"float64", "int64"}]
+        yCols = [col for col in featureCols if col in df.columns and str(df[col].dtype) in {"float64", "int64"} and not col.endswith("_days_since_last_game_normalised")]
     
     teamDfs = matchDfToPerTeamDfs(df=df)
     Ydf = createY(df=df, yCols=yCols)
@@ -280,5 +281,48 @@ def tensorDatasetsFromMatchDf(df: pd.DataFrame|None=None, trainSplit: float=0.8,
     }
     if valDs is not None:
         tensorDict["validation"] = valDs
-        
+
     return tensorDict
+
+def createDataLoader(dataset: MatchDataset, batchSize: int=64, shuffle: bool=True, 
+                     numWorkers: int=1, seed: int=42, pinMemory: bool=True) -> DataLoader:
+    torch.manual_seed(seed=seed)
+    dataloader = DataLoader(dataset=dataset, batch_size=batchSize, shuffle=shuffle, num_workers=numWorkers, pin_memory=pinMemory)
+    return dataloader
+
+def createDataLoaders(tensorDict: Dict[str, MatchDataset], batchSize: int=64, 
+                      numWorkers: int=1, seed: int=42, pinMemory: bool=True) -> Dict[str, DataLoader]:
+    loaderDict = {}
+    for name, ds in tensorDict.items():
+        shuffle = name == "train"
+        loaderDict[name] = createDataLoader(dataset=ds, batchSize=batchSize, shuffle=shuffle,
+                                            numWorkers=numWorkers, seed=seed, pinMemory=pinMemory)
+    
+    return loaderDict
+
+def prepareData(df: pd.DataFrame|None=None, type: str|None=None, trainSplit: float=0.8, valSplit: float=0.2, save: bool=True,
+                featureCols: List[str]|None=None, yCols: List[str]|str|None="result", seqLen: int=20,
+                normMethod: str="standard", unkBucketDict: Dict[str, int]=UNKBUCKETDICT, 
+                normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
+                tokeniserDir: str=TOKENISERDIR, tensorDir: str=TENSORSDIR, batchSize: int=64,
+                numWorkers: int=1, seed: int=42, pinMemory: bool=True, shuffle: bool|None=None) -> Dict[str, DataLoader]|DataLoader|None:
+    """set type=None to get a dict object containing test, train, and validation (if available) DataLoader objects"""
+    assert type is None or type in {"train", "test", "validation"}, 'type must be None or one of "train", "test", "validation"'
+    tensorDict = {}
+    types = [type] if type is not None else ["train", "test", "validation"]
+    for split in types:
+        tensorDict[split] = MatchDataset.load(parentDir=tensorDir, fileDir=split)
+
+    if all(val is None for val in tensorDict.values()):
+        tensorDict = tensorDatasetsFromMatchDf(df=df, trainSplit=trainSplit, valSplit=valSplit, save=save, featureCols=featureCols,
+                                               yCols=yCols, seqLen=seqLen, normMethod=normMethod, unkBucketDict=unkBucketDict,
+                                               normaliserDir=normaliserDir, normaliserJSON=normaliserJSON, tokeniserDir=tokeniserDir,
+                                               tensorDir=tensorDir)
+    if type is None:
+        if tensorDict["validation"] is None:
+            del tensorDict["validation"]
+        return createDataLoaders(tensorDict=tensorDict, batchSize=batchSize, numWorkers=numWorkers, seed=seed, pinMemory=pinMemory)
+    dataset = tensorDict[type]
+    shuffle = shuffle if shuffle is not None else type == "train"
+    return createDataLoader(dataset=dataset, batchSize=batchSize, shuffle=shuffle, 
+                            numWorkers=numWorkers, seed=seed, pinMemory=pinMemory) if dataset is not None else None

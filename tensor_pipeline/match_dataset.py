@@ -66,32 +66,34 @@ class MatchDataset(Dataset):
             json.dump(meta, f, indent=2)
     
     @staticmethod
-    def load(directory: str|None=None, parentDir: str=TENSORSDIR, fileDir: str="train") -> Dataset:
+    def load(directory: str|None=None, parentDir: str=TENSORSDIR, fileDir: str="train") -> Dataset|None:
         path = Path(directory) if directory else Path(parentDir) / fileDir
+        try:
+            Xhome = torch.load(path / "Xhome.pt")
+            Xaway = torch.load(path / "Xaway.pt")
+            maskHome = torch.load(path / "maskHome.pt")
+            maskAway = torch.load(path / "maskAway.pt")
+            Y = torch.load(path / "Y.pt")
 
-        Xhome = torch.load(path / "Xhome.pt")
-        Xaway = torch.load(path / "Xaway.pt")
-        maskHome = torch.load(path / "maskHome.pt")
-        maskAway = torch.load(path / "maskAway.pt")
-        Y = torch.load(path / "Y.pt")
+            with open(path / "metadata.json", "r") as f:
+                meta = json.load(f)
+            
+            featureCols = meta["featureCols"]
+            yCols = meta["yCols"]
+            unkBucketSizes = {int(k): v for k, v in meta["unkBucketSizes"].items()}
 
-        with open(path / "metadata.json", "r") as f:
-            meta = json.load(f)
-        
-        featureCols = meta["featureCols"]
-        yCols = meta["yCols"]
-        unkBucketSizes = {int(k): v for k, v in meta["unkBucketSizes"].items()}
+            unkBucketDict = {
+                featureCols[int(idx)].replace("_token", "").replace("home_", "").replace("away_", ""): size
+                for idx, size in unkBucketSizes.items()
+            }
 
-        unkBucketDict = {
-            featureCols[int(idx)].replace("_token", ""): size
-            for idx, size in unkBucketSizes.items()
-        }
-
-        return MatchDataset(
-            Xhome=Xhome, Xaway=Xaway,
-            maskHome=maskHome, maskAway=maskAway,
-            Y=Y,
-            featureCols=featureCols,
-            yCols=yCols,
-            unkBucketDict=unkBucketDict,
-        )
+            return MatchDataset(
+                Xhome=Xhome, Xaway=Xaway,
+                maskHome=maskHome, maskAway=maskAway,
+                Y=Y,
+                featureCols=featureCols,
+                yCols=yCols,
+                unkBucketDict=unkBucketDict,
+            )
+        except FileNotFoundError:
+            return None
