@@ -8,7 +8,7 @@ from utils import prepareMatchDataFrame
 from .tokeniser import Tokeniser
 from .normaliser import Normaliser
 from .match_dataset import MatchDataset
-from .config import UNKBUCKETDICT, TOKENISERDIR, NORMALISERDIR
+from .config import UNKBUCKETDICT, TOKENISERDIR, NORMALISERDIR, TENSORSDIR
 
 def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR, 
              unkBucketDict: Dict[str, int]=UNKBUCKETDICT) -> pd.DataFrame:
@@ -41,17 +41,18 @@ def normalise(df: pd.DataFrame, train: bool=True, eps: float=1e-8,
             columns.append(col)
 
     with Normaliser(eps=eps, train=train, fileName=fileName, fileDir=fileDir) as nrm:
-        for col in columns:
-            if col.startswith("away_"):
-                continue
-            if col.startswith("home_"):
-                base = col.removeprefix("home_")
-                nrm.fit(pd.concat([
-                    df[f"home_{base}"], 
-                    df[f"away_{base}"]
-                    ]), col=base)
-                continue
-            nrm.fit(df[col])
+        if train:
+            for col in columns:
+                if col.startswith("away_"):
+                    continue
+                if col.startswith("home_"):
+                    base = col.removeprefix("home_")
+                    nrm.fit(pd.concat([
+                        df[f"home_{base}"], 
+                        df[f"away_{base}"]
+                        ]), col=base)
+                    continue
+                nrm.fit(df[col])
 
         for col in columns:
             if col not in df.columns:
@@ -233,3 +234,51 @@ def buildAllWindows(df: pd.DataFrame,
         yCols=yCols,
         unkBucketDict=UNKBUCKETDICT
     )
+
+def createDataset(df: pd.DataFrame, featureCols: List[str]|None=None, type: str="train", tokeniserDir: str=TOKENISERDIR, 
+                  unkBucketDict: Dict[str, int]=UNKBUCKETDICT, normMethod: str="standard",
+                  normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
+                  yCols: List[str]|str|None=None, seqLen: int=20, tensorDir: str=TENSORSDIR, 
+                  save: bool=True) -> MatchDataset:
+    train = type == "train"
+    df = tokenise(df=df, train=train, fileDir=tokeniserDir, unkBucketDict=unkBucketDict)
+    df = addDaysSinceLastGame(df=df)
+    df = normalise(df=df, train=train, method=normMethod, fileDir=normaliserDir, fileName=normaliserJSON)
+    if featureCols is None:
+        featureCols = [col for col in df.columns if col.endswith("_token") or col.endswith("_normalised")]
+    
+    ds = buildAllWindows(df=df, featureCols=featureCols, yCols=yCols, seqLen=seqLen)
+    if save:
+        ds.save(parentDir=tensorDir, fileDir=type)
+    return ds
+
+def tensorDatasetsFromMatchDf(df: pd.DataFrame|None=None, trainSplit: float=0.8, valSplit: float=0.2, save: bool=True,
+                              featureCols: List[str]|None=None, yCols: List[str]|str|None="result", seqLen: int=20,
+                              normMethod: str="standard", unkBucketDict: Dict[str, int]=UNKBUCKETDICT, 
+                              normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
+                              tokeniserDir: str=TOKENISERDIR, tensorDir: str=TENSORSDIR) -> Dict[str, MatchDataset]:
+    if df is None:
+        df = prepareMatchDataFrame()
+    
+    trainDf, testDf, valDf = getTemporalSplits(df=df, trainSplit=trainSplit, valSplit=valSplit)
+
+    trainDs = createDataset(trainDf, featureCols=featureCols, type="train", tokeniserDir=tokeniserDir,
+                            unkBucketDict=unkBucketDict, normMethod=normMethod,
+                            normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
+                            yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save)
+    testDs = createDataset(testDf, featureCols=featureCols, type="test", tokeniserDir=tokeniserDir,
+                            unkBucketDict=unkBucketDict, normMethod=normMethod,
+                            normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
+                            yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save)
+    valDs = createDataset(valDf, featureCols=featureCols, type="validation", tokeniserDir=tokeniserDir,
+                          unkBucketDict=unkBucketDict, normMethod=normMethod,
+                          normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
+                          yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save) if valDf is not None else None
+    tensorDict = {
+        "train": trainDs,
+        "test": testDs,
+    }
+    if valDs is not None:
+        tensorDict["validation"] = valDs
+        
+    return tensorDict

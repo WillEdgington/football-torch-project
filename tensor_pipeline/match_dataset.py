@@ -25,7 +25,7 @@ class MatchDataset(Dataset):
         self.contCols  = [i for i, c in enumerate(featureCols) if not c.endswith("_token")]
 
         self.unkBucketSizes = {
-            i: unkBucketDict[featureCols[i].replace("_token", "")]
+            i: unkBucketDict[featureCols[i].replace("_token", "").replace("home_", "").replace("away_", "")]
             for i in self.tokenCols
         }
     
