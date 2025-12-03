@@ -3,7 +3,8 @@ import pandas as pd
 import numpy as np
 
 from torch.utils.data import DataLoader
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Any
+from pandas import Series
 
 from utils import prepareMatchDataFrame
 from .tokeniser import Tokeniser
@@ -156,14 +157,16 @@ def matchDfToPerTeamDfs(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
              for team, g in longDf.groupby("team")}
     return teams
 
-def createY(df: pd.DataFrame, yCols: List[str]|str="result") -> pd.DataFrame:
+def createY(df: pd.DataFrame, yCols: List[str]|str="result") -> Dict[str, np.ndarray]:
     df = df.copy()
-    yCols = ["match_id", yCols] if isinstance(yCols, str) else ["match_id"] + yCols
+    if isinstance(yCols, str):
+        yCols = [yCols]
     if "result" in yCols:
-        df["goal_diff"] = df["home_goals"] - df["home_goals"]
-        df["result"] = df["goal_diff"].apply(lambda gd: 1 if gd > 0 else (-1 if gd < 0 else 0))
+        df["goal_diff"] = df["home_goals"] - df["away_goals"]
+        df["result"] = df["goal_diff"].apply(lambda gd: 2 if gd > 0 else (0 if gd < 0 else 1))
     
-    return df[yCols]
+    matchIds = df["match_id"].to_list()
+    return {matchIds[i]: df[df["match_id"] == matchIds[i]][yCols].to_numpy(dtype=np.float32) for i in range(len(matchIds))}
 
 def buildTeamWindows(teamDf: pd.DataFrame, 
                      featureCols: list[str], 
@@ -197,7 +200,7 @@ def buildAllWindows(df: pd.DataFrame,
         yCols = [col for col in featureCols if col in df.columns and str(df[col].dtype) in {"float64", "int64"} and not col.endswith("_days_since_last_game_normalised")]
     
     teamDfs = matchDfToPerTeamDfs(df=df)
-    Ydf = createY(df=df, yCols=yCols)
+    Ydict = createY(df=df, yCols=yCols)
     teamWindows = {
         team: buildTeamWindows(teamDf=tdf, featureCols=featureCols, seqLen=seqLen) 
         for team, tdf in teamDfs.items()
@@ -212,7 +215,7 @@ def buildAllWindows(df: pd.DataFrame,
     for matchId, homeTeam, awayTeam in zip(df["match_id"], df["home_team"], df["away_team"]):
         Xh, Mh = teamWindows[homeTeam][matchId]
         Xa, Ma = teamWindows[awayTeam][matchId]
-        Y = Ydf[Ydf["match_id"] == matchId].values.astype(np.float32)
+        Y = Ydict[matchId]
         Xhome.append(Xh)
         Xaway.append(Xa)
         Mhome.append(Mh)
