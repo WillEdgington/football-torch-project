@@ -2,16 +2,52 @@ import numpy as np
 import torch
 import json
 
-from typing import Dict, List
+from typing import Dict, List, Tuple, Any
 from torch.utils.data import Dataset
 from pathlib import Path
 
-from .config import UNKBUCKETDICT, TENSORSDIR
+from .tokeniser import Tokeniser
+from .config import TENSORSDIR, TOKENISERDIR
+
+def constructTokenContCols(featureCols: List[str], tokeniserDir: str=TOKENISERDIR) -> Tuple[Dict[str, List[int]], Dict[str, List[int]]]:
+    tokenCols = {
+        "index": [],
+        "size": [],
+        "unkBucketSize": []
+    }
+    contCols = {
+        "index": [],
+    }
+    sizeCache = {}
+
+    for i, col in enumerate(featureCols):
+        if not col.endswith("_token"):
+            contCols["index"].append(i)
+            continue
+        tokenCols["index"].append(i)
+        
+        base = col.removesuffix("_token")
+        if base.startswith("home_") or base.startswith("away_"):
+            base = base.removeprefix("home_").removeprefix("away_")
+        fileName = f"{base}_tokeniser.json"
+        
+        if base in sizeCache:
+            tokenCols["size"].append(sizeCache[base][0])
+            tokenCols["unkBucketSize"].append(sizeCache[base][1])
+            del sizeCache[base]
+            continue
+
+        with Tokeniser(train=False, fileName=fileName, fileDir=tokeniserDir) as tkn:
+            sizeCache[base] = (len(tkn.idtos), tkn.unkBuckets)
+            tokenCols["size"].append(sizeCache[base][0])
+            tokenCols["unkBucketSize"].append(sizeCache[base][1])
+        
+    return tokenCols, contCols
 
 class MatchDataset(Dataset):
     def __init__(self, Xhome: torch.Tensor, Xaway: torch.Tensor, maskHome: torch.Tensor, 
                  maskAway: torch.Tensor, Y: torch.Tensor, featureCols: List[str], yCols: List[str],
-                 unkBucketDict: Dict[str, int]=UNKBUCKETDICT):
+                 tokeniserDir: str=TOKENISERDIR):
         self.Xhome = Xhome
         self.Xaway = Xaway
         self.maskHome = maskHome
@@ -20,27 +56,18 @@ class MatchDataset(Dataset):
 
         self.yCols = yCols
         self.featureCols = featureCols
-
-        self.tokenCols = [i for i, c in enumerate(featureCols) if c.endswith("_token")]
-        self.contCols  = [i for i, c in enumerate(featureCols) if not c.endswith("_token")]
-
-        self.unkBucketSizes = {
-            i: unkBucketDict[featureCols[i].replace("_token", "").replace("home_", "").replace("away_", "")]
-            for i in self.tokenCols
-        }
+        self.tokenCols, self.contCols = constructTokenContCols(featureCols=featureCols, tokeniserDir=tokeniserDir)
     
     def __len__(self) -> int:
         return len(self.Y)
     
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor|List[int]]:
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor|Dict[str, Any]]:
         return {
             "home": self.Xhome[idx],
             "away": self.Xaway[idx],
             "mask_home": self.maskHome[idx],
             "mask_away": self.maskAway[idx],
             "y": self.Y[idx],
-            "token_cols": self.tokenCols,
-            "cont_cols": self.contCols,
         }
     
     def save(self, directory: str|None=None, parentDir: str=TENSORSDIR, fileDir: str="train"):
@@ -59,7 +86,6 @@ class MatchDataset(Dataset):
             "yCols": self.yCols,
             "tokenCols": self.tokenCols,
             "contCols": self.contCols,
-            "unkBucketSizes": self.unkBucketSizes
         }
 
         with open(path / "metadata.json", "w") as f:
@@ -80,12 +106,6 @@ class MatchDataset(Dataset):
             
             featureCols = meta["featureCols"]
             yCols = meta["yCols"]
-            unkBucketSizes = {int(k): v for k, v in meta["unkBucketSizes"].items()}
-
-            unkBucketDict = {
-                featureCols[int(idx)].replace("_token", "").replace("home_", "").replace("away_", ""): size
-                for idx, size in unkBucketSizes.items()
-            }
 
             return MatchDataset(
                 Xhome=Xhome, Xaway=Xaway,
@@ -93,7 +113,6 @@ class MatchDataset(Dataset):
                 Y=Y,
                 featureCols=featureCols,
                 yCols=yCols,
-                unkBucketDict=unkBucketDict,
             )
         except FileNotFoundError:
             return None
