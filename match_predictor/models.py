@@ -3,6 +3,67 @@ import torch
 from typing import List, Dict
 from torch import nn
 
+actDict = {
+    "SiLU": lambda ns, ipl: nn.SiLU(inplace=ipl),
+    "ReLU": lambda ns, ipl: nn.ReLU(inplace=ipl),
+    "LeakyReLU": lambda ns, ipl: nn.LeakyReLU(negative_slope=ns, inplace=ipl)
+}
+
+def getActivation(activation: str, inplace: bool=True, negativeSlope: float=0.01):
+    assert activation in actDict, f"activation must be one of: {actDict.keys()}"
+    return actDict[activation](negativeSlope, inplace)
+
+class Residual(nn.Module):
+    def __init__(self, module: nn.Module):
+        super().__init__()
+        self.module = module
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.module(x)
+
+class ConvBlock(nn.Module):
+    def __init__(self, inChannels: int, outChannels: int, kernelSize: int=3, norm: bool=True, activation: str='SiLU'):
+        assert inChannels > 0, "inChannels must be a positive integer"
+        assert inChannels > 0, "outChannels must be a positive integer"
+        assert kernelSize > 0, "inChannels must be a positive integer"
+        super().__init__()
+        self.block = nn.ModuleList()
+        if norm:
+            self.block.append(nn.GroupNorm(num_groups=1, num_channels=inChannels))
+        self.block.append(nn.Conv1d(in_channels=inChannels, 
+                                    out_channels=outChannels,
+                                    kernel_size=kernelSize,
+                                    padding=kernelSize >> 1))
+        self.block.append(getActivation(activation=activation))
+        self.block = nn.Sequential(*self.block)
+    
+    def forward(self, x: torch.Tensor, mask: None|torch.Tensor) -> torch.Tensor:
+        x = x.transpose(1, 2)
+        x = self.block(x).transpose(1, 2)
+        if mask is not None:
+            x = x * mask.unsqueeze(-1)
+        return x
+    
+class AttentionBlock(nn.Module):
+    def __init__(self, channels, numHeads: int=1, dropout: float=0.0):
+        assert channels > 0, "channels must be a positive integer"
+        assert numHeads > 0, "numHeads must be a positive integer"
+        assert 0.0 <= dropout < 1.0, "dropout must be a float in range [0, 1)"
+        super().__init__()
+        self.ln = nn.LayerNorm(normalized_shape=channels)
+        self.mha = nn.MultiheadAttention(
+            embed_dim=channels,
+            num_heads=numHeads,
+            dropout=dropout,
+            batch_first=True
+        )
+
+    def forward(self, x: torch.Tensor, mask: None|torch.Tensor=None) -> torch.Tensor:
+        x = self.ln(x)
+        return self.mha(
+            query=x, key=x, value=x,
+            key_padding_mask=mask
+        )
+
 class TokenEmbedding(nn.Module):
     def __init__(self, vocabSizes: Dict[int, int], embDim: int):
         super().__init__()
@@ -26,7 +87,7 @@ class TokenEmbedding(nn.Module):
         return out
 
 class FeatureProjector(nn.Module):
-    def __init__(self, vocabSizes: Dict[int, int], embDim: int, numFeatures: int=20):
+    def __init__(self, vocabSizes: Dict[int, int], embDim: int, numFeatures: int=20, activation: str="SiLU"):
         super().__init__()
         self.embDim = embDim
         self.embedding = TokenEmbedding(vocabSizes=vocabSizes, embDim=embDim)
@@ -37,7 +98,7 @@ class FeatureProjector(nn.Module):
         self.contProjs = nn.ModuleList([
             nn.Linear(1, embDim) for _ in self.contIndexes
         ])
-        self.activation = nn.SiLU(inplace=True)
+        self.activation = getActivation(activation=activation)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.embedding(x)
