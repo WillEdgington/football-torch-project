@@ -17,8 +17,8 @@ class Residual(nn.Module):
     def __init__(self, module: nn.Module):
         super().__init__()
         self.module = module
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.module(x)
+    def forward(self, x: torch.Tensor, mask: torch.Tensor|None=None) -> torch.Tensor:
+        return x + self.module(x, mask)
 
 class ConvBlock(nn.Module):
     def __init__(self, inChannels: int, outChannels: int, kernelSize: int=3, norm: bool=True, activation: str='SiLU'):
@@ -36,7 +36,7 @@ class ConvBlock(nn.Module):
         self.block.append(getActivation(activation=activation))
         self.block = nn.Sequential(*self.block)
     
-    def forward(self, x: torch.Tensor, mask: None|torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask: None|torch.Tensor=None) -> torch.Tensor:
         x = x.transpose(1, 2)
         x = self.block(x).transpose(1, 2)
         if mask is not None:
@@ -62,7 +62,7 @@ class AttentionBlock(nn.Module):
         return self.mha(
             query=x, key=x, value=x,
             key_padding_mask=mask
-        )
+        )[0]
 
 class TokenEmbedding(nn.Module):
     def __init__(self, vocabSizes: Dict[int, int], embDim: int):
@@ -107,6 +107,36 @@ class FeatureProjector(nn.Module):
             out[:, :, i, :] = self.activation(proj(x[:, :, i].unsqueeze(-1)))
         
         return out
+    
+class DownsampleBlock(nn.Module):
+    def __init__(self, inChannels: int, outChannels: int, 
+                 attnBlocks: int=1, numAttnHeads: int=1, attnDropout: float=0.0,
+                 resAttn: bool=True, convBlocks: int=1, convKernelSize: int=3, 
+                 convNorm: bool=True, convActivation: str="SiLU", resConv: bool=True):
+        assert attnBlocks > 0 or convBlocks > 0, "downsample block must contain atleast one attention block or convolutional block"
+        super().__init__()
+        
+        self.attns = nn.ModuleList()
+        for _ in range(attnBlocks):
+            self.attns.append(Residual(AttentionBlock(channels=inChannels, numHeads=numAttnHeads, dropout=attnDropout))
+                             if resAttn else AttentionBlock(channels=inChannels, numHeads=numAttnHeads, dropout=attnDropout))
+            
+        self.convs = nn.ModuleList()
+        for i in range(convBlocks):
+            if resConv and i < convBlocks - 1:
+                self.convs.append(Residual(ConvBlock(inChannels=inChannels, outChannels=inChannels, kernelSize=convKernelSize, 
+                                                     norm=convNorm, activation=convActivation)))
+                continue
+            out = inChannels if i < convBlocks - 1 else outChannels
+            self.convs.append(ConvBlock(inChannels=inChannels, outChannels=out, kernelSize=convKernelSize, 
+                                        norm=convNorm, activation=convActivation))
+
+    def forward(self, x: torch.Tensor, mask: None|torch.Tensor=None) -> torch.Tensor:
+        for attn in self.attns:
+            x = attn(x, mask)
+        for conv in self.convs:
+            x = conv(x, mask)
+        return x
 
 ### Under Development ###
 class Encoder(nn.Module):
