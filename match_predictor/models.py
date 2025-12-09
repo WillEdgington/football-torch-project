@@ -66,6 +66,7 @@ class AttentionBlock(nn.Module):
 
 class TokenEmbedding(nn.Module):
     def __init__(self, vocabSizes: Dict[int, int], embDim: int):
+        assert embDim > 0, "embDim must be a positive integer"
         super().__init__()
         self.embDim = embDim
 
@@ -132,23 +133,43 @@ class DownsampleBlock(nn.Module):
                                         norm=convNorm, activation=convActivation))
 
     def forward(self, x: torch.Tensor, mask: None|torch.Tensor=None) -> torch.Tensor:
+        if mask is not None:
+            mask = ~mask.bool()
         for attn in self.attns:
-            x = attn(x, mask)
+            x = attn(x, mask=mask)
+
+        if mask is not None:
+            mask = (~mask).float()
         for conv in self.convs:
-            x = conv(x, mask)
+            x = conv(x, mask=mask)
         return x
 
-### Under Development ###
 class Encoder(nn.Module):
-    def __init__(self, vocabSizes: Dict[int, int], embDim: int, numFeatures: int=20):
+    def __init__(self, vocabSizes: Dict[int, int], embDim: int=2, 
+                 numFeatures: int=60, outChannels: int=10, numDownBlocks: int=1,
+                 attnBlocksPerDown: int=1, numAttnHeads: int=1, attnDropout: float=0.0,
+                 resAttn: bool=True, convBlocksPerDown: int=1, convKernelSize: int=3, 
+                 convNorm: bool=True, convActivation: str="SiLU", resConv: bool=True):
+        assert outChannels > 0, "outChannels must be a positive integer"
+        assert numDownBlocks > 0, "numDownBlocks must be a positive integer"
         super().__init__()
-        # embed tokens, shape to z
-        # convolution, attention and residual
         self.featProject = FeatureProjector(vocabSizes=vocabSizes, embDim=embDim, numFeatures=numFeatures)
-        
+        inChannels = numFeatures * embDim
+        channels = [inChannels + (((outChannels - inChannels) * i) // numDownBlocks) for i in range(numDownBlocks + 1)]
+        self.downsamples = nn.ModuleList()
+        for i in range(numDownBlocks):
+            self.downsamples.append(
+                DownsampleBlock(inChannels=channels[i], outChannels=channels[i+1], attnBlocks=attnBlocksPerDown, numAttnHeads=numAttnHeads,
+                                attnDropout=attnDropout, resAttn=resAttn, convBlocks=convBlocksPerDown, convKernelSize=convKernelSize,
+                                convNorm=convNorm, convActivation=convActivation, resConv=resConv)
+            )
 
-    def forward(self, x: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
-        return torch.Tensor()
+    def forward(self, x: torch.Tensor, mask: torch.Tensor|None=None) -> torch.Tensor:
+        x = self.featProject(x)
+        x = x.flatten(start_dim=2)
+        for down in self.downsamples:
+            x = down(x, mask)
+        return x
     
 ### Under Development ###
 class MLP(nn.Module):
