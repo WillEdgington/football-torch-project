@@ -44,7 +44,7 @@ class ConvBlock(nn.Module):
         return x
     
 class AttentionBlock(nn.Module):
-    def __init__(self, channels, numHeads: int=1, dropout: float=0.0):
+    def __init__(self, channels: int, numHeads: int=1, dropout: float=0.0):
         assert channels > 0, "channels must be a positive integer"
         assert numHeads > 0, "numHeads must be a positive integer"
         assert 0.0 <= dropout < 1.0, "dropout must be a float in range [0, 1)"
@@ -63,7 +63,25 @@ class AttentionBlock(nn.Module):
             query=x, key=x, value=x,
             key_padding_mask=mask
         )[0]
+    
+class FeedForwardBlock(nn.Module):
+    def __init__(self, channels: int, expansion: int=2, activation: str="SiLU", lnorm: bool=True):
+        assert expansion > 0, "expansion must be a positive integer"
+        assert channels > 0, "channels must be a positive integer"
+        super().__init__()
+        layers = nn.ModuleList()
+        if lnorm:
+            layers.append(nn.LayerNorm(channels))
+        layers += [
+            nn.Linear(in_features=channels, out_features=channels * expansion),
+            getActivation(activation=activation),
+            nn.Linear(in_features=channels * expansion, out_features=channels)
+        ]
+        self.ffn = nn.Sequential(*layers)
 
+    def forward(self, x: torch.Tensor, mask: torch.Tensor|None=None) -> torch.Tensor:
+        return self.ffn(x)
+    
 class TokenEmbedding(nn.Module):
     def __init__(self, vocabSizes: Dict[int, int], embDim: int):
         assert embDim > 0, "embDim must be a positive integer"
@@ -180,20 +198,44 @@ class MLP(nn.Module):
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.Tensor()
-    
-### Under Development ###
+
 class FeatureExtractor(nn.Module):
-    def __init__(self,):
+    def __init__(self, channels: int, depth: int=2, useAttn: bool=True,
+                 resAttn: bool=True, attnDropout: float=0.0, numAttnHeads: int=2,
+                 useFFN: bool=True, resFFN: bool=True, expansionFFN: int=2,
+                 lnormFFN: bool=True, activationFFN: str="SiLU"):
+        assert useAttn or useFFN, "useAttn or useFFN must be True"
+        assert depth > 0, "depth must be a positive integer"
+        assert channels > 0, "channels must be a positive integer"
         super().__init__()
-        # extract features (mid block of nn architecture)
-        # attention, residual
+        
+        self.blocks = nn.ModuleList()
+        for _ in range(depth):
+            self.blocks.append(
+                Residual(AttentionBlock(channels=channels, numHeads=numAttnHeads, dropout=attnDropout))
+                if resAttn else AttentionBlock(channels=channels, numHeads=numAttnHeads, dropout=attnDropout)
+            )
+            
+            if useFFN:
+                self.blocks.append(
+                    Residual(FeedForwardBlock(channels=channels, expansion=expansionFFN, 
+                                              activation=activationFFN, lnorm=lnormFFN))
+                    if resFFN else FeedForwardBlock(channels=channels, expansion=expansionFFN,
+                                                    activation=activationFFN, lnorm=lnormFFN)
+                )
+        
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.Tensor()
+    def forward(self, x: torch.Tensor, mask: torch.Tensor|None=None) -> torch.Tensor:
+        if mask is not None:
+            mask = ~mask.bool()
+        for block in self.blocks:
+            x = block(x, mask)
+        return x
 
 ### Under Development ###
 class MatchPredictorV0(nn.Module):
-    def __init__(self, vocabSizes: Dict[int, int], seqLen: int=20, numFeatures: int=20, embDim: int=1):
+    def __init__(self, vocabSizes: Dict[int, int], seqLen: int=20, numFeatures: int=60, latentSize: int=10, embDim: int=2):
+        assert latentSize > 0, "latentSize must be a positive integer"
         assert seqLen > 0, "seqLen must be a positive integer"
         assert numFeatures > 0, "numFeatures must be a postive integer"
         assert embDim > 0, "embDim must be a positive integer"
@@ -203,11 +245,11 @@ class MatchPredictorV0(nn.Module):
         # feature extraction of new concetanated tensor
         # mlp to get logit (y)
         self.encoder = Encoder(vocabSizes=vocabSizes, embDim=embDim, numFeatures=numFeatures)
-        self.feature = FeatureExtractor()
+        self.feature = FeatureExtractor(channels=latentSize)
         self.mlp = MLP()
 
     def forward(self, xh: torch.Tensor, xa: torch.Tensor, mh: torch.Tensor, ma: torch.Tensor) -> torch.Tensor:
         xh, xa = self.encoder(xh, mh), self.encoder(xa, ma)
-        x = torch.cat([xh, xa], dim=-1)
-        x += self.feature(x)
+        x = torch.cat([xh, xa], dim=1)
+        m = torch.cat([mh, ma], dim=1)
         return self.mlp(x)
