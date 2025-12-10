@@ -189,38 +189,41 @@ class Encoder(nn.Module):
             x = down(x, mask)
         return x
     
-### Under Development ###
 class MLP(nn.Module):
-    def __init__(self,):
+    def __init__(self, channels: int, numFeatures: int, outDim: int):
+        assert channels > 0, "channels must be a positive integer"
+        assert numFeatures > 0, "numFeatures must be a positive integer"
+        assert outDim > 0, "outDim must be a positive integer"
         super().__init__()
-        # x -> logit of assigned shape
-        # convolution, linear
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.Tensor()
+        self.head = nn.Linear(channels * numFeatures, outDim)
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.flatten(1)
+        return self.head(x)
+    
 class FeatureExtractor(nn.Module):
-    def __init__(self, channels: int, depth: int=2, useAttn: bool=True,
+    def __init__(self, numFeatures: int, depth: int=2, useAttn: bool=True,
                  resAttn: bool=True, attnDropout: float=0.0, numAttnHeads: int=2,
                  useFFN: bool=True, resFFN: bool=True, expansionFFN: int=2,
                  lnormFFN: bool=True, activationFFN: str="SiLU"):
         assert useAttn or useFFN, "useAttn or useFFN must be True"
         assert depth > 0, "depth must be a positive integer"
-        assert channels > 0, "channels must be a positive integer"
+        assert numFeatures > 0, "channels must be a positive integer"
         super().__init__()
         
         self.blocks = nn.ModuleList()
         for _ in range(depth):
-            self.blocks.append(
-                Residual(AttentionBlock(channels=channels, numHeads=numAttnHeads, dropout=attnDropout))
-                if resAttn else AttentionBlock(channels=channels, numHeads=numAttnHeads, dropout=attnDropout)
-            )
+            if useAttn:
+                self.blocks.append(
+                    Residual(AttentionBlock(channels=numFeatures, numHeads=numAttnHeads, dropout=attnDropout))
+                    if resAttn else AttentionBlock(channels=numFeatures, numHeads=numAttnHeads, dropout=attnDropout)
+                )
             
             if useFFN:
                 self.blocks.append(
-                    Residual(FeedForwardBlock(channels=channels, expansion=expansionFFN, 
+                    Residual(FeedForwardBlock(channels=numFeatures, expansion=expansionFFN, 
                                               activation=activationFFN, lnorm=lnormFFN))
-                    if resFFN else FeedForwardBlock(channels=channels, expansion=expansionFFN,
+                    if resFFN else FeedForwardBlock(channels=numFeatures, expansion=expansionFFN,
                                                     activation=activationFFN, lnorm=lnormFFN)
                 )
         
@@ -232,24 +235,37 @@ class FeatureExtractor(nn.Module):
             x = block(x, mask)
         return x
 
-### Under Development ###
 class MatchPredictorV0(nn.Module):
-    def __init__(self, vocabSizes: Dict[int, int], seqLen: int=20, numFeatures: int=60, latentSize: int=10, embDim: int=2):
+    def __init__(self, vocabSizes: Dict[int, int], outDim: int, seqLen: int=20, 
+                 numFeatures: int=60, latentSize: int=10, embDim: int=2,
+                 encoderNumDownBlocks: int=1, encoderAttnBlocksPerDown: int=1, encoderNumAttnHeads: int=1,
+                 encoderAttnDropout: float=0.0, encoderResAttn: bool=True, encoderConvBlocksPerDown: int=1,
+                 encoderConvKernelSize: int=3, encoderConvNorm: bool=True, encoderConvActivation: str="SiLU",
+                 encoderResConv: bool=True, featExtractorDepth: int=2, featExtractorUseAttn: bool=True,
+                 featExtractorResAttn: bool=True, featExtractorAttnDropout: float=0.0, featExtractorNumAttnHeads: int=2,
+                 featExtractorUseFFN: bool=True, featExtractorResFFN: bool=True, featExtractorExpansionFFN: int=2,
+                 featExtractorLnormFFN: bool=True, featExtractorActivationFFN: str="SiLU"):
         assert latentSize > 0, "latentSize must be a positive integer"
         assert seqLen > 0, "seqLen must be a positive integer"
         assert numFeatures > 0, "numFeatures must be a postive integer"
         assert embDim > 0, "embDim must be a positive integer"
         super().__init__()
-        # pass xh, xa through the Encoder seperately
-        # concatenate both Encoder outputs
-        # feature extraction of new concetanated tensor
-        # mlp to get logit (y)
-        self.encoder = Encoder(vocabSizes=vocabSizes, embDim=embDim, numFeatures=numFeatures)
-        self.feature = FeatureExtractor(channels=latentSize)
-        self.mlp = MLP()
+        self.encoder = Encoder(vocabSizes=vocabSizes, embDim=embDim, numFeatures=numFeatures,
+                               outChannels=latentSize, numDownBlocks=encoderNumDownBlocks, attnBlocksPerDown=encoderAttnBlocksPerDown,
+                               numAttnHeads=encoderNumAttnHeads, attnDropout=encoderAttnDropout, resAttn=encoderResAttn,
+                               convBlocksPerDown=encoderConvBlocksPerDown, convKernelSize=encoderConvKernelSize, convNorm=encoderConvNorm,
+                               convActivation=encoderConvActivation, resConv=encoderResConv)
+
+        self.feature = FeatureExtractor(numFeatures=latentSize, depth=featExtractorDepth, useAttn=featExtractorUseAttn, 
+                                        resAttn=featExtractorResAttn, attnDropout=featExtractorAttnDropout, numAttnHeads=featExtractorNumAttnHeads,
+                                        useFFN=featExtractorUseFFN, resFFN=featExtractorResFFN, expansionFFN=featExtractorExpansionFFN,
+                                        lnormFFN=featExtractorLnormFFN, activationFFN=featExtractorActivationFFN)
+        
+        self.mlp = MLP(channels=seqLen*2, numFeatures=latentSize, outDim=outDim)
 
     def forward(self, xh: torch.Tensor, xa: torch.Tensor, mh: torch.Tensor, ma: torch.Tensor) -> torch.Tensor:
         xh, xa = self.encoder(xh, mh), self.encoder(xa, ma)
         x = torch.cat([xh, xa], dim=1)
         m = torch.cat([mh, ma], dim=1)
+        x = self.feature(x, m)
         return self.mlp(x)
