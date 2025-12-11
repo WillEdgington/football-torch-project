@@ -166,7 +166,7 @@ def createY(df: pd.DataFrame, yCols: List[str]|str="result") -> Dict[str, np.nda
         df["result"] = df["goal_diff"].apply(lambda gd: 2 if gd > 0 else (0 if gd < 0 else 1))
     
     matchIds = df["match_id"].to_list()
-    return {matchIds[i]: df[df["match_id"] == matchIds[i]][yCols].to_numpy(dtype=np.float32) for i in range(len(matchIds))}
+    return {matchIds[i]: df[df["match_id"] == matchIds[i]][yCols].to_numpy(dtype=np.float32).reshape(-1) for i in range(len(matchIds))}
 
 def buildTeamWindows(teamDf: pd.DataFrame, 
                      featureCols: list[str], 
