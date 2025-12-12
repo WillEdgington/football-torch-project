@@ -40,7 +40,8 @@ class ConvBlock(nn.Module):
         x = x.transpose(1, 2)
         x = self.block(x).transpose(1, 2)
         if mask is not None:
-            x = x * mask.unsqueeze(-1)
+            keep = mask.to(dtype=x.dtype, device=x.device).unsqueeze(-1)
+            x = x * keep
         return x
     
 class AttentionBlock(nn.Module):
@@ -102,7 +103,7 @@ class TokenEmbedding(nn.Module):
         B, T, F = x.shape
         out = x.new_empty((B, T, F, self.embDim)) 
         for i, emb in zip(self.tokenIndexes, self.embLayers):
-            out[:, :, i, :] = emb(x[:, :, i].to(dtype=torch.int32))
+            out[:, :, i, :] = emb(x[:, :, i].long())
         return out
 
 class FeatureProjector(nn.Module):
@@ -151,13 +152,10 @@ class DownsampleBlock(nn.Module):
                                         norm=convNorm, activation=convActivation))
 
     def forward(self, x: torch.Tensor, mask: None|torch.Tensor=None) -> torch.Tensor:
-        if mask is not None:
-            mask = ~mask.bool()
+        attnmask = mask == 0 if mask is not None else None
         for attn in self.attns:
-            x = attn(x, mask=mask)
+            x = attn(x, mask=attnmask)
 
-        if mask is not None:
-            mask = (~mask).float()
         for conv in self.convs:
             x = conv(x, mask=mask)
         return x
@@ -229,8 +227,7 @@ class FeatureExtractor(nn.Module):
         
     
     def forward(self, x: torch.Tensor, mask: torch.Tensor|None=None) -> torch.Tensor:
-        if mask is not None:
-            mask = ~mask.bool()
+        mask = mask == 0 if mask is not None else None
         for block in self.blocks:
             x = block(x, mask)
         return x
