@@ -176,11 +176,11 @@ def buildTeamWindows(teamDf: pd.DataFrame,
     
     featN = len(featureCols)
     window = np.repeat(np.zeros(featN, dtype=np.float32).reshape(1, -1), seqLen, axis=0)
-    mask = np.array([0]*(seqLen), dtype=np.int32)
+    mask = np.array([0]*(seqLen - 1) + [1], dtype=np.int32) # atleast one row must be unmasked
     windows = {matchIds[0]: (window.copy(), mask.copy())}
     for i in range(len(matchIds) - 1):
         prevMatch = teamDf[teamDf["match_id"] == matchIds[i]][featureCols].to_numpy(dtype=np.float32)
-        if mask[0] != 1:
+        if mask[0] != 1 and i != 0:
             mask[0] = 1
             mask = np.roll(mask, shift=-1)
         window[0] = prevMatch.copy()
