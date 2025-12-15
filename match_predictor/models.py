@@ -188,12 +188,16 @@ class Encoder(nn.Module):
         return x
     
 class MLP(nn.Module):
-    def __init__(self, channels: int, numFeatures: int, outDim: int):
+    def __init__(self, channels: int, numFeatures: int, outDim: int, activation: str|None="SiLU"):
         assert channels > 0, "channels must be a positive integer"
         assert numFeatures > 0, "numFeatures must be a positive integer"
         assert outDim > 0, "outDim must be a positive integer"
         super().__init__()
-        self.head = nn.Linear(channels * numFeatures, outDim)
+        layers = nn.ModuleList()
+        if activation is not None:
+            layers.append(getActivation(activation=activation))
+        layers.append(nn.Linear(channels * numFeatures, outDim))
+        self.head = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.flatten(1)
@@ -241,7 +245,7 @@ class MatchPredictorV0(nn.Module):
                  encoderResConv: bool=True, featExtractorDepth: int=2, featExtractorUseAttn: bool=True,
                  featExtractorResAttn: bool=True, featExtractorAttnDropout: float=0.0, featExtractorNumAttnHeads: int=2,
                  featExtractorUseFFN: bool=True, featExtractorResFFN: bool=True, featExtractorExpansionFFN: int=2,
-                 featExtractorLnormFFN: bool=True, featExtractorActivationFFN: str="SiLU"):
+                 featExtractorLnormFFN: bool=True, featExtractorActivationFFN: str="SiLU", activationMLP: str|None="SiLU"):
         assert latentSize > 0, "latentSize must be a positive integer"
         assert seqLen > 0, "seqLen must be a positive integer"
         assert numFeatures > 0, "numFeatures must be a postive integer"
