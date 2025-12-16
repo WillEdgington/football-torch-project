@@ -34,10 +34,10 @@ def plotAccuracy(results: Dict[str, list], show: bool=True, ax: plt.Axes|None=No
 def plotResults(results: Dict[str, float], title: str):
     showAccuracy = "train_accuracy" in results
 
-    rows = 1 + int(showAccuracy)
-    fig, axes = plt.subplots(1, rows, figsize=(8 * rows, 8))
+    cols = 1 + int(showAccuracy)
+    fig, axes = plt.subplots(1, cols, figsize=(8 * cols, 8))
 
-    if rows == 1:
+    if cols == 1:
         axes = [axes]
 
     plotLoss(results=results, show=False, ax=axes[0])
@@ -51,9 +51,11 @@ def plotConfusionMatrix(model: torch.nn.Module,
                         dataloader: torch.utils.data.DataLoader,
                         Ylabels: List[str]=["Home Win", "Draw", "Away Win"],
                         normalise: bool=True,
+                        title: str="",
                         device: torch.device="cuda" if torch.cuda.is_available() else "cpu"):
-    preds, targets = evaluateClassificationModel(model=model, 
+    preds, targets, _ = evaluateClassificationModel(model=model, 
                                                  dataloader=dataloader,
+                                                 getProbs=False,
                                                  device=device)
     
     numClasses = len(Ylabels)
@@ -79,7 +81,7 @@ def plotConfusionMatrix(model: torch.nn.Module,
 
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
-    ax.set_title("Confusion Matrix" + (" (Normalized row-wise)" if normalise else ""))
+    ax.set_title(title + " Confusion Matrix" + (" (Normalized row-wise)" if normalise else ""))
 
     for i in range(numClasses):
         for j in range(numClasses):
@@ -91,4 +93,65 @@ def plotConfusionMatrix(model: torch.nn.Module,
 
     fig.colorbar(im, ax=ax)
     fig.tight_layout()
+    plt.show()
+
+def plotClassConfidenceHistogram(model: torch.nn.Module,
+                                 dataloader: torch.utils.data.DataLoader,
+                                 Ylabels: List[str]={0: "Home Win", 1: "Draw", 2: "Away Win"},
+                                 bins: int=20,
+                                 title: str="",
+                                 device: torch.device="cuda" if torch.cuda.is_available() else "cpu"):
+    _, targets, probs = evaluateClassificationModel(model=model,
+                                                    dataloader=dataloader,
+                                                    getProbs=True,
+                                                    device=device)
+    
+    classIndexes = list(Ylabels.keys())
+    numClasses = len(classIndexes)
+
+    if numClasses == 1:
+        fig, axes = plt.subplots(1, 1, figsize=(6, 4))
+        axes = [axes]
+    else:
+        cols = min(3, numClasses)
+        rows = (2 + numClasses) // 3
+        fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+        axes = axes.flatten()
+
+    binEdges = torch.linspace(0.0, 1.0, steps=bins + 1)
+    
+    for ax, classIdx in zip(axes, classIndexes):
+        classProbs = probs[:, classIdx]
+        isClass = targets == classIdx
+
+        correctProbs = classProbs[isClass]
+        incorrectProbs = classProbs[~isClass]
+
+        ax.hist(
+            correctProbs.numpy(),
+            bins=binEdges,
+            alpha=0.9,
+            label="Correct",
+            density=True
+        )
+
+        ax.hist(
+            incorrectProbs.numpy(),
+            bins=binEdges,
+            alpha=0.7,
+            label="Incorrect",
+            density=True
+        )
+
+        ax.set_title(Ylabels[classIdx])
+        ax.set_xlabel("Predicted Probability")
+        ax.set_ylabel("Density")
+        ax.set_xlim(0.0, 1.0)
+        ax.legend()
+
+    for ax in axes[numClasses:]:
+        ax.axis("off")
+    
+    fig.suptitle(title + " Class Confidence Histogram", fontsize=14)
+    plt.tight_layout()
     plt.show()
