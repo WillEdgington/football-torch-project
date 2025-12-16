@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from typing import Dict, Tuple, List
 
-from .eval import evaluateClassificationModel
+from .eval import evaluateClassificationModel, extractCalibrationSignals, binCalibration, computeECE
 
 def plotLoss(results: Dict[str, list], show: bool=True, ax: plt.Axes|None=None) -> Tuple[plt.Figure, plt.Axes]|None:
     if ax is None:
@@ -154,4 +154,34 @@ def plotClassConfidenceHistogram(model: torch.nn.Module,
     
     fig.suptitle(title + " Class Confidence Histogram", fontsize=14)
     plt.tight_layout()
+    plt.show()
+
+def plotReliabilityDiagram(model: torch.nn.Module,
+                           dataloader: torch.utils.data.DataLoader,
+                           bins: int=20,
+                           title: str="",
+                           device: torch.device="cuda" if torch.cuda.is_available() else "cpu"):
+    preds, targets, probs = evaluateClassificationModel(model=model,
+                                                        dataloader=dataloader,
+                                                        getProbs=True,
+                                                        device=device)
+    confidences, correct = extractCalibrationSignals(preds=preds, 
+                                                     targets=targets, 
+                                                     probs=probs)
+    centers, acc, conf, count = binCalibration(confidences=confidences,
+                                               correct=correct,
+                                               bins=bins)
+    ece = computeECE(binAcc=acc,
+                     binConf=conf,
+                     binCount=count)
+    
+    plt.figure(figsize=(6, 6))
+    plt.plot([0, 1], [0, 1], "--", color="gray", label="Perfect calibration")
+    plt.plot(conf, acc, marker="o", label="Model")
+
+    plt.xlabel("Confidence")
+    plt.ylabel("Accuracy")
+    plt.title(f"{title} Reliability Diagram (ECE = {ece:.3f})")
+    plt.legend()
+    plt.grid(alpha=0.3)
     plt.show()
