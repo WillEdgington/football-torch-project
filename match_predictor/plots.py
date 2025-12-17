@@ -81,7 +81,7 @@ def plotConfusionMatrix(model: torch.nn.Module,
 
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
-    ax.set_title(title + " Confusion Matrix" + (" (Normalized row-wise)" if normalise else ""))
+    ax.set_title(title + " Confusion Matrix" + (" (Normalized)" if normalise else ""))
 
     for i in range(numClasses):
         for j in range(numClasses):

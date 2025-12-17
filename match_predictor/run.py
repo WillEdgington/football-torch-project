@@ -3,40 +3,77 @@ import torch
 from torchinfo import summary
 from tensor_pipeline import prepareData
 
-from .models import DownsampleBlock, FeatureProjector, Encoder, FeatureExtractor, MLP, MatchPredictorV0
+from .models import MatchPredictorV0
+from .train import train
+from .save import saveStates, saveTorchObject, loadResultsMap, loadStates
+from .config import SAVEDMODELSDIR
+from .plots import plotLoss, plotAccuracy, plotResults, plotConfusionMatrix, plotClassConfidenceHistogram, plotReliabilityDiagram
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+MANUALSEED = 42
+torch.manual_seed(seed=MANUALSEED)
+
+BATCHSIZE = 64
+LR = 0.0001 * (BATCHSIZE / 64)
+
+EPOCHS = 20
+SAVEPOINT = 10
+
+TRIALDIR = SAVEDMODELSDIR + "/TRIAL_0"
+RESULTSNAME = "MODEL_0_RESULTS.pt"
 
 if __name__=="__main__":
-    dataloader = prepareData(type="train")
-    if not (dataloader is None or isinstance(dataloader, dict)):
-        batch = next(iter(dataloader)) if dataloader is not None else {}
-        for k, v in batch.items():
-            if isinstance(v, torch.Tensor):
-                print(k, v.shape, v.dtype)
-                continue
-            # print(k, len(v), len(v[0]))
+    dataloaders = prepareData(batchSize=BATCHSIZE)
+    assert isinstance(dataloaders, dict), "dataloaders is not type dict"
+    trainDataloader, valDataloader, testDataloader = dataloaders["train"], dataloaders["validation"], dataloaders["test"]
 
-        tokenCols = dataloader.dataset.tokenCols
-        vocabSize = {
-            i: s for i, s in zip(tokenCols["index"], tokenCols["size"])
-        }
-        print(vocabSize)
-        fp = FeatureProjector(vocabSizes=vocabSize, embDim=2, numFeatures=60)
-        summary(fp, input_size=(64, 20, 60))
+    results = loadResultsMap(resultsDir=TRIALDIR, resultsName=RESULTSNAME)
+    epochsComplete = min(len(results["train_loss"]), EPOCHS) if results is not None else 0
+    
+    tokenCols = trainDataloader.dataset.tokenCols
+    vocabSize = {
+        i: s for i, s in zip(tokenCols["index"], tokenCols["size"])
+    }
+    batch = next(iter(trainDataloader))
+    for k, v in batch.items():
+        print(f"{k}, {v.shape}")
+    model = MatchPredictorV0(vocabSizes=vocabSize, outDim=3, seqLen=20, 
+                             embDim=1, numFeatures=60, latentSize=20,
+                             encoderNumDownBlocks=1, encoderAttnBlocksPerDown=1,
+                             featExtractorDepth=1, encoderAttnDropout=0.3, featExtractorAttnDropout=0.3)
+    model.to(device)
+    optimizer = torch.optim.AdamW(params=model.parameters(), lr=LR, weight_decay=0.0001)
 
-        db = DownsampleBlock(inChannels=120, outChannels=30, attnBlocks=3, convBlocks=3)
-        summary(db, input_size=[(64, 20, 120), (64, 20)])
+    if epochsComplete > 0:
+        states = loadStates(stateName=f"MODEL_0_EPOCHS_{epochsComplete}.pt",
+                            stateDir=TRIALDIR,
+                            model=model, 
+                            optimizer=optimizer)
+    model.to(device)
+    summary(model, input_size=[(64, 20, 60), (64, 20, 60), (64, 20), (64, 20)])
 
-        enc = Encoder(vocabSizes=vocabSize, embDim=2, numFeatures=60, outChannels=10, numDownBlocks=5, attnBlocksPerDown=4)
-        summary(enc, input_size=[(64, 20, 60), (64, 20)])
-
-        fe = FeatureExtractor(numFeatures=20, depth=5)
-        summary(fe, input_size=[(64, 40, 20), (64, 40)])
-
-        mlp = MLP(channels=40, numFeatures=20, outDim=3)
-        summary(mlp, input_size=(64, 40, 20))
-
-        model = MatchPredictorV0(vocabSizes=vocabSize, outDim=3, seqLen=20, 
-                                 embDim=2, numFeatures=60, latentSize=20, 
-                                 encoderNumDownBlocks=5, encoderAttnBlocksPerDown=4,
-                                 featExtractorDepth=5)
-        summary(model, input_size=[(64, 20, 60), (64, 20, 60), (64, 20), (64, 20)])
+    lossFn = torch.nn.CrossEntropyLoss()
+    
+    while epochsComplete < EPOCHS:
+        results = train(model=model,
+                        trainDataloader=trainDataloader,
+                        testDataloader=valDataloader,
+                        lossFn=lossFn,
+                        optimizer=optimizer,
+                        epochs=SAVEPOINT,
+                        results=results,
+                        calcAccuracy=True,
+                        enableAmp=True,
+                        gradClipping=1.0,
+                        device=device)
+        epochsComplete += SAVEPOINT
+        saveTorchObject(obj=results, targetDir=TRIALDIR, fileName=RESULTSNAME)
+        saveStates(stateName=f"MODEL_0_EPOCHS_{epochsComplete}.pt", 
+                   stateDir=TRIALDIR,
+                   model=model,
+                   optimizer=optimizer)
+    plotResults(results=results, title="MODEL_0 results")
+    plotConfusionMatrix(model=model, dataloader=testDataloader, title="MODEL_0 (test) -")
+    plotClassConfidenceHistogram(model=model, dataloader=testDataloader, title="MODEL_0 (test) -")
+    plotClassConfidenceHistogram(model=model, dataloader=trainDataloader, title="MODEL_0 (train) -")
+    plotReliabilityDiagram(model=model, dataloader=testDataloader, bins=20, title="MODEL_0 (test) -")
