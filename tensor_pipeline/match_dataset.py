@@ -7,9 +7,11 @@ from torch.utils.data import Dataset
 from pathlib import Path
 
 from .tokeniser import Tokeniser
+from .transforms import Transform
 from .config import TENSORSDIR, TOKENISERDIR
 
-def constructTokenContCols(featureCols: List[str], tokeniserDir: str=TOKENISERDIR) -> Tuple[Dict[str, List[int]], Dict[str, List[int]]]:
+def constructTokenContCols(featureCols: List[str], 
+                           tokeniserDir: str=TOKENISERDIR) -> Tuple[Dict[str, List[int]], Dict[str, List[int]]]:
     tokenCols = {
         "index": [],
         "size": [],
@@ -45,9 +47,16 @@ def constructTokenContCols(featureCols: List[str], tokeniserDir: str=TOKENISERDI
     return tokenCols, contCols
 
 class MatchDataset(Dataset):
-    def __init__(self, Xhome: torch.Tensor, Xaway: torch.Tensor, maskHome: torch.Tensor, 
-                 maskAway: torch.Tensor, Y: torch.Tensor, featureCols: List[str], yCols: List[str],
-                 tokeniserDir: str=TOKENISERDIR):
+    def __init__(self, 
+                 Xhome: torch.Tensor, 
+                 Xaway: torch.Tensor, 
+                 maskHome: torch.Tensor, 
+                 maskAway: torch.Tensor, 
+                 Y: torch.Tensor, 
+                 featureCols: List[str], 
+                 yCols: List[str],
+                 tokeniserDir: str=TOKENISERDIR,
+                 transform: Transform | None=None):
         self.Xhome = Xhome
         self.Xaway = Xaway
         self.maskHome = maskHome
@@ -57,20 +66,32 @@ class MatchDataset(Dataset):
         self.yCols = yCols
         self.featureCols = featureCols
         self.tokenCols, self.contCols = constructTokenContCols(featureCols=featureCols, tokeniserDir=tokeniserDir)
+        
+        self.transform = transform
+        self.transform.connect(ds=self)
     
     def __len__(self) -> int:
         return len(self.Y)
     
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor|Dict[str, Any]]:
-        return {
+    def __getitem__(self, 
+                    idx: int) -> Dict[str, torch.Tensor|Dict[str, Any]]:
+        sample = {
             "home": self.Xhome[idx],
             "away": self.Xaway[idx],
             "mask_home": self.maskHome[idx],
             "mask_away": self.maskAway[idx],
             "y": self.Y[idx],
         }
+
+        if self.transform is not None:
+            sample = self.transform(sample)
+
+        return sample 
     
-    def save(self, directory: str|None=None, parentDir: str=TENSORSDIR, fileDir: str="train"):
+    def save(self, 
+             directory: str|None=None, 
+             parentDir: str=TENSORSDIR, 
+             fileDir: str="train"):
         path = Path(directory) if directory else Path(parentDir) / fileDir
         path.mkdir(parents=True, exist_ok=True)
         
@@ -92,7 +113,10 @@ class MatchDataset(Dataset):
             json.dump(meta, f, indent=2)
     
     @staticmethod
-    def load(directory: str|None=None, parentDir: str=TENSORSDIR, fileDir: str="train") -> Dataset|None:
+    def load(transform: Transform|None=None, 
+             directory: str|None=None, 
+             parentDir: str=TENSORSDIR, 
+             fileDir: str="train") -> Dataset|None:
         path = Path(directory) if directory else Path(parentDir) / fileDir
         try:
             Xhome = torch.load(path / "Xhome.pt")
@@ -113,6 +137,7 @@ class MatchDataset(Dataset):
                 Y=Y,
                 featureCols=featureCols,
                 yCols=yCols,
+                transform=transform
             )
         except FileNotFoundError:
             return None

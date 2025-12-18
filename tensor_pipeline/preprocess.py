@@ -10,6 +10,7 @@ from utils import prepareMatchDataFrame
 from .tokeniser import Tokeniser
 from .normaliser import Normaliser
 from .match_dataset import MatchDataset
+from .transforms import Transform
 from .config import UNKBUCKETDICT, TOKENISERDIR, NORMALISERDIR, TENSORSDIR
 
 def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR, 
@@ -192,7 +193,8 @@ def buildTeamWindows(teamDf: pd.DataFrame,
 def buildAllWindows(df: pd.DataFrame,
                     featureCols: list[str],
                     yCols: List[str]|str|None=None,
-                    seqLen: int=20) -> MatchDataset:
+                    seqLen: int=20,
+                    transform: Transform|None=None) -> MatchDataset:
     """Set yCols to None to get columns with numeric values from featureCols as Y"""
     if isinstance(yCols, str):
         yCols = [yCols]
@@ -235,14 +237,15 @@ def buildAllWindows(df: pd.DataFrame,
         maskAway=torch.from_numpy(Maway),
         Y=torch.from_numpy(Y),
         featureCols=featureCols,
-        yCols=yCols
+        yCols=yCols,
+        transform=transform
     )
 
 def createDataset(df: pd.DataFrame, featureCols: List[str]|None=None, type: str="train", tokeniserDir: str=TOKENISERDIR, 
                   unkBucketDict: Dict[str, int]=UNKBUCKETDICT, normMethod: str="standard",
                   normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
                   yCols: List[str]|str|None=None, seqLen: int=20, tensorDir: str=TENSORSDIR, 
-                  save: bool=True) -> MatchDataset:
+                  transform: Transform|None=None, save: bool=True) -> MatchDataset:
     train = type == "train"
     df = tokenise(df=df, train=train, fileDir=tokeniserDir, unkBucketDict=unkBucketDict)
     df = addDaysSinceLastGame(df=df)
@@ -250,7 +253,7 @@ def createDataset(df: pd.DataFrame, featureCols: List[str]|None=None, type: str=
     if featureCols is None:
         featureCols = [col for col in df.columns if col.endswith("_token") or col.endswith("_normalised")]
     
-    ds = buildAllWindows(df=df, featureCols=featureCols, yCols=yCols, seqLen=seqLen)
+    ds = buildAllWindows(df=df, featureCols=featureCols, yCols=yCols, seqLen=seqLen, transform=transform)
     if save:
         ds.save(parentDir=tensorDir, fileDir=type)
     return ds
@@ -259,7 +262,8 @@ def tensorDatasetsFromMatchDf(df: pd.DataFrame|None=None, trainSplit: float=0.8,
                               featureCols: List[str]|None=None, yCols: List[str]|str|None="result", seqLen: int=20,
                               normMethod: str="standard", unkBucketDict: Dict[str, int]=UNKBUCKETDICT, 
                               normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
-                              tokeniserDir: str=TOKENISERDIR, tensorDir: str=TENSORSDIR) -> Dict[str, MatchDataset]:
+                              tokeniserDir: str=TOKENISERDIR, tensorDir: str=TENSORSDIR, 
+                              trainTransform: Transform|None=None) -> Dict[str, MatchDataset]:
     if df is None:
         df = prepareMatchDataFrame()
     
@@ -268,7 +272,7 @@ def tensorDatasetsFromMatchDf(df: pd.DataFrame|None=None, trainSplit: float=0.8,
     trainDs = createDataset(trainDf, featureCols=featureCols, type="train", tokeniserDir=tokeniserDir,
                             unkBucketDict=unkBucketDict, normMethod=normMethod,
                             normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
-                            yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save)
+                            yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save, transform=trainTransform)
     testDs = createDataset(testDf, featureCols=featureCols, type="test", tokeniserDir=tokeniserDir,
                             unkBucketDict=unkBucketDict, normMethod=normMethod,
                             normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
@@ -307,19 +311,21 @@ def prepareData(df: pd.DataFrame|None=None, type: str|None=None, trainSplit: flo
                 normMethod: str="standard", unkBucketDict: Dict[str, int]=UNKBUCKETDICT, 
                 normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
                 tokeniserDir: str=TOKENISERDIR, tensorDir: str=TENSORSDIR, batchSize: int=64,
-                numWorkers: int=1, seed: int=42, pinMemory: bool=True, shuffle: bool|None=None) -> Dict[str, DataLoader]|DataLoader|None:
+                numWorkers: int=1, seed: int=42, pinMemory: bool=True, shuffle: bool|None=None,
+                trainTransform: Transform|None=None) -> Dict[str, DataLoader]|DataLoader|None:
     """set type=None to get a dict object containing test, train, and validation (if available) DataLoader objects"""
     assert type is None or type in {"train", "test", "validation"}, 'type must be None or one of "train", "test", "validation"'
     tensorDict = {}
     types = [type] if type is not None else ["train", "test", "validation"]
     for split in types:
-        tensorDict[split] = MatchDataset.load(parentDir=tensorDir, fileDir=split)
+        transform = trainTransform if split == "train" else None
+        tensorDict[split] = MatchDataset.load(transform=transform, parentDir=tensorDir, fileDir=split)
 
     if all(val is None for val in tensorDict.values()):
         tensorDict = tensorDatasetsFromMatchDf(df=df, trainSplit=trainSplit, valSplit=valSplit, save=save, featureCols=featureCols,
                                                yCols=yCols, seqLen=seqLen, normMethod=normMethod, unkBucketDict=unkBucketDict,
                                                normaliserDir=normaliserDir, normaliserJSON=normaliserJSON, tokeniserDir=tokeniserDir,
-                                               tensorDir=tensorDir)
+                                               tensorDir=tensorDir, trainTransform=trainTransform)
     if type is None:
         if tensorDict["validation"] is None:
             del tensorDict["validation"]
