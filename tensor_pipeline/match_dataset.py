@@ -68,7 +68,8 @@ class MatchDataset(Dataset):
         self.tokenCols, self.contCols = constructTokenContCols(featureCols=featureCols, tokeniserDir=tokeniserDir)
         
         self.transform = transform
-        self.transform.connect(ds=self)
+        if transform is not None:
+            self.transform.connect(ds=self)
     
     def __len__(self) -> int:
         return len(self.Y)

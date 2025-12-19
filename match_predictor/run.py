@@ -1,7 +1,7 @@
 import torch
 
 from torchinfo import summary
-from tensor_pipeline import prepareData
+from tensor_pipeline import prepareData, RandomTokenUNK
 
 from .models import MatchPredictorV0
 from .train import train
@@ -16,14 +16,17 @@ torch.manual_seed(seed=MANUALSEED)
 BATCHSIZE = 64
 LR = 0.0001 * (BATCHSIZE / 64)
 
-EPOCHS = 20
+EPOCHS = 100
 SAVEPOINT = 10
 
-TRIALDIR = SAVEDMODELSDIR + "/TRIAL_0"
-RESULTSNAME = "MODEL_0_RESULTS.pt"
+TRIALDIR = SAVEDMODELSDIR + "/TRIAL_1_RANDOMTOKENUNK"
+MODELNAME = "MODEL_0"
+RESULTSNAME = f"{MODELNAME}_RESULTS.pt"
 
 if __name__=="__main__":
-    dataloaders = prepareData(batchSize=BATCHSIZE)
+    augmentation = RandomTokenUNK(prob=0.8, intensity=0.4)
+
+    dataloaders = prepareData(batchSize=BATCHSIZE, trainTransform=augmentation)
     assert isinstance(dataloaders, dict), "dataloaders is not type dict"
     trainDataloader, valDataloader, testDataloader = dataloaders["train"], dataloaders["validation"], dataloaders["test"]
 
@@ -45,7 +48,7 @@ if __name__=="__main__":
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=LR, weight_decay=0.0001)
 
     if epochsComplete > 0:
-        states = loadStates(stateName=f"MODEL_0_EPOCHS_{epochsComplete}.pt",
+        states = loadStates(stateName=f"{MODELNAME}_EPOCHS_{epochsComplete}.pt",
                             stateDir=TRIALDIR,
                             model=model, 
                             optimizer=optimizer)
@@ -68,12 +71,12 @@ if __name__=="__main__":
                         device=device)
         epochsComplete += SAVEPOINT
         saveTorchObject(obj=results, targetDir=TRIALDIR, fileName=RESULTSNAME)
-        saveStates(stateName=f"MODEL_0_EPOCHS_{epochsComplete}.pt", 
+        saveStates(stateName=f"{MODELNAME}_EPOCHS_{epochsComplete}.pt", 
                    stateDir=TRIALDIR,
                    model=model,
                    optimizer=optimizer)
-    plotResults(results=results, title="MODEL_0 results")
-    plotConfusionMatrix(model=model, dataloader=testDataloader, title="MODEL_0 (test) -")
-    plotClassConfidenceHistogram(model=model, dataloader=testDataloader, title="MODEL_0 (test) -")
-    plotClassConfidenceHistogram(model=model, dataloader=trainDataloader, title="MODEL_0 (train) -")
-    plotReliabilityDiagram(model=model, dataloader=testDataloader, bins=20, title="MODEL_0 (test) -")
+    plotResults(results=results, title=f"{MODELNAME} results")
+    plotConfusionMatrix(model=model, dataloader=testDataloader, title=f"{MODELNAME} (test) -")
+    plotClassConfidenceHistogram(model=model, dataloader=testDataloader, title=f"{MODELNAME} (test) -")
+    plotClassConfidenceHistogram(model=model, dataloader=trainDataloader, title=f"{MODELNAME} (train) -")
+    plotReliabilityDiagram(model=model, dataloader=testDataloader, bins=20, title=f"{MODELNAME} (test) -")
