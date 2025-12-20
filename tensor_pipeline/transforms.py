@@ -43,7 +43,7 @@ class RandomTokenUNK(Transform):
         
         grouped = {}
 
-        for i, unkBuckets in zip(ds.tokenCols["index"], ds.tokenCols["unkBucketSize"]):
+        for i, unkBuckets, vocabSize in zip(ds.tokenCols["index"], ds.tokenCols["unkBucketSize"], ds.tokenCols["size"]):
             assert unkBuckets > 0, "UNK augmentation requires UNK buckets"
             feature = ds.featureCols[i]
             base = feature.removeprefix("home_").removeprefix("away_")
@@ -51,7 +51,8 @@ class RandomTokenUNK(Transform):
             if base not in grouped:
                 grouped[base] = {
                     "idx": [i],
-                    "unkRange": (1, unkBuckets + 2) # assuming <pad> = 0, <unk_0> = 1
+                    "unkRange": (1, unkBuckets + 2), # assuming <pad> = 0, <unk_0> = 1
+                    "size": vocabSize
                 }
             else:
                 grouped[base]["idx"].append(i)
@@ -59,49 +60,69 @@ class RandomTokenUNK(Transform):
         self.featGroups = [
             {
                 "idx": v["idx"],
-                "unkRange": v["unkRange"]
+                "unkRange": v["unkRange"],
+                "size": v["size"]
             }
             for v in grouped.values()
         ]
-
+    
     def __call__(self, 
                  sample: Dict[str, torch.Tensor|Dict[str, Any]]) -> Dict[str, torch.Tensor|Dict[str, Any]]:
         if random.random() > self.prob:
             return sample
-        
+
         xh = sample["home"].clone()
         xa = sample["away"].clone()
         mh = sample["mask_home"].bool()
         ma = sample["mask_away"].bool()
 
+        device = xh.device
+
         for fg in self.featGroups:
-            entities = []
             indexes = fg["idx"]
+            unklo, unkhi = fg["unkRange"]
+
+            vals = []
             for i in indexes:
-                entities.append(xh[mh, i])
-                entities.append(xa[ma, i])
-            
-            if len(entities) == 0:
+                if mh.any():
+                    vals.append(xh[mh, i])
+                if ma.any():
+                    vals.append(xa[ma, i])
+
+            if not vals:
                 continue
 
-            entities = torch.unique(torch.cat(entities))
-            entities = entities[entities != 0]
+            entities = torch.unique(torch.cat(vals))
+            entities = entities[entities != 0] # remove <pad> entities
 
-            if len(entities) == 0:
+            if entities.numel() == 0:
                 continue
 
-            maskent = torch.rand(len(entities), device=entities.device) <= self.intensity
-            unkRange = fg["unkRange"]
+            mutMask = torch.rand(
+                entities.numel(), device=device
+            ) <= self.intensity
 
-            for entity in entities[maskent].tolist():
-                unkID = random.randrange(unkRange[0], unkRange[1])
+            if not mutMask.any():
+                continue
 
-                for i in indexes:
-                    maskh = (xh[:, i] == entity)
-                    xh[maskh, i] = unkID
-                    maska = (xa[:, i] == entity)
-                    xa[maska, i] = unkID
-            
+            mutEntities = entities[mutMask].long()
+
+            unkIds = torch.randint(
+                unklo, unkhi,
+                (mutEntities.numel(),),
+                device=device
+            )
+
+            lut = torch.arange(
+                fg["size"], device=device
+            )
+
+            lut[mutEntities] = unkIds
+
+            for i in indexes:
+                xh[:, i] = lut[xh[:, i].long()]
+                xa[:, i] = lut[xa[:, i].long()]
+
         sample["home"] = xh
         sample["away"] = xa
         return sample
