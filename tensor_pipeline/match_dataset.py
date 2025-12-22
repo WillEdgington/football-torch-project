@@ -51,22 +51,28 @@ class MatchDataset(Dataset):
                  Xhome: torch.Tensor, 
                  Xaway: torch.Tensor, 
                  maskHome: torch.Tensor, 
-                 maskAway: torch.Tensor, 
+                 maskAway: torch.Tensor,
                  Y: torch.Tensor, 
                  featureCols: List[str], 
                  yCols: List[str],
+                 missingHome: torch.Tensor|None=None,
+                 missingAway: torch.Tensor|None=None,
+                 missingCols: List[str]|None=None,
                  tokeniserDir: str=TOKENISERDIR,
                  transform: Transform | None=None):
         self.Xhome = Xhome
         self.Xaway = Xaway
         self.maskHome = maskHome
         self.maskAway = maskAway
+        self.missingHome = missingHome
+        self.missingAway = missingAway
         self.Y = Y
 
         self.yCols = yCols
         self.featureCols = featureCols
+        self.missingCols = missingCols
         self.tokenCols, self.contCols = constructTokenContCols(featureCols=featureCols, tokeniserDir=tokeniserDir)
-        
+ 
         self.transform = transform
         if transform is not None:
             self.transform.connect(ds=self)
@@ -81,6 +87,8 @@ class MatchDataset(Dataset):
             "away": self.Xaway[idx],
             "mask_home": self.maskHome[idx],
             "mask_away": self.maskAway[idx],
+            "missing_home": self.missingHome[idx] if self.missingHome is not None else None,
+            "missing_away": self.missingAway[idx] if self.missingAway is not None else None,
             "y": self.Y[idx],
         }
 
@@ -96,7 +104,6 @@ class MatchDataset(Dataset):
         path = Path(directory) if directory else Path(parentDir) / fileDir
         path.mkdir(parents=True, exist_ok=True)
         
-
         torch.save(self.Xhome, path / "Xhome.pt")
         torch.save(self.Xaway, path / "Xaway.pt")
         torch.save(self.maskHome, path / "maskHome.pt")
@@ -109,6 +116,11 @@ class MatchDataset(Dataset):
             "tokenCols": self.tokenCols,
             "contCols": self.contCols,
         }
+
+        if self.missingCols is not None:
+            torch.save(self.missingHome, path / "missingHome.pt")
+            torch.save(self.missingAway, path / "missingAway.pt")
+            meta["missingCols"] = self.missingCols
 
         with open(path / "metadata.json", "w") as f:
             json.dump(meta, f, indent=2)
@@ -132,10 +144,22 @@ class MatchDataset(Dataset):
             featureCols = meta["featureCols"]
             yCols = meta["yCols"]
 
+            if "missingCols" in meta:
+                missingCols = meta["missingCols"]
+                missingHome = torch.load(path / "missingHome.pt")
+                missingAway = torch.load(path / "missingAway.pt")
+            else:
+                missingCols = None
+                missingHome = None
+                missingAway = None
+
             return MatchDataset(
                 Xhome=Xhome, Xaway=Xaway,
                 maskHome=maskHome, maskAway=maskAway,
                 Y=Y,
+                missingHome=missingHome,
+                missingAway=missingAway,
+                missingCols=missingCols,
                 featureCols=featureCols,
                 yCols=yCols,
                 transform=transform

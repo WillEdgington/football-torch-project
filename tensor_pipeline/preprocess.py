@@ -32,7 +32,7 @@ def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR,
 
 def normalise(df: pd.DataFrame, train: bool=True, eps: float=1e-8,
               columns: List[str]=[], typeFilter: str|None="float64", method: str="standard",
-              fileDir: str=NORMALISERDIR, fileName: str="numeric_normaliser.json") -> pd.DataFrame:
+              fileDir: str=NORMALISERDIR, fileName: str="numeric_normaliser.json", rememberMissing: bool=True) -> pd.DataFrame:
     assert method in {"standard", "minmax"}, 'invalid method input, Choose between: "standard", "minmax"'
     assert typeFilter is None or typeFilter in {"float64", "int64"}, 'typeFilter must be "float64", "int64", or None'
     typeFilters = {typeFilter} if typeFilter else {"float64", "int64"}
@@ -61,7 +61,10 @@ def normalise(df: pd.DataFrame, train: bool=True, eps: float=1e-8,
             if col not in df.columns:
                 continue
             base = col[5:] if col.startswith("home_") or col.startswith("away_") else col
-            df[col] = df[col].fillna(value=nrm.params[base]["mean"])          
+            if rememberMissing:
+                df[f"{col}_missing"] = df[col].isna().astype(np.int8)
+            
+            df[col] = df[col].fillna(value=nrm.params[base]["mean"])
             df[f"{col}_normalised"] = nrm.encodeSeries(df[col], col=base, method=method, fit=False)
     return df
 
@@ -170,23 +173,34 @@ def createY(df: pd.DataFrame, yCols: List[str]|str="result") -> Dict[str, np.nda
     return {matchIds[i]: df[df["match_id"] == matchIds[i]][yCols].to_numpy(dtype=np.float32).reshape(-1) for i in range(len(matchIds))}
 
 def buildTeamWindows(teamDf: pd.DataFrame, 
-                     featureCols: list[str], 
-                     seqLen: int=20) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
+                     featureCols: List[str], 
+                     seqLen: int=20,
+                     missingCols: List[str|None]=None) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
     teamDf = teamDf.sort_values("date").reset_index(drop=True)
     matchIds = teamDf["match_id"].tolist()
     
     featN = len(featureCols)
+    missN = len(missingCols) if missingCols else 0
     window = np.repeat(np.zeros(featN, dtype=np.float32).reshape(1, -1), seqLen, axis=0)
     mask = np.array([0]*(seqLen - 1) + [1], dtype=np.int32) # atleast one row must be unmasked
-    windows = {matchIds[0]: (window.copy(), mask.copy())}
+    missing = np.repeat(np.zeros(missN, dtype=np.int8).reshape(1, -1), seqLen, axis=0) if missingCols else None
+    
+    windows = {matchIds[0]: (window.copy(), mask.copy(), missing.copy())}
+
     for i in range(len(matchIds) - 1):
-        prevMatch = teamDf[teamDf["match_id"] == matchIds[i]][featureCols].to_numpy(dtype=np.float32)
+        game = teamDf[teamDf["match_id"] == matchIds[i]]
+        prevMatch = game[featureCols].to_numpy(dtype=np.float32)
         if mask[0] != 1 and i != 0:
             mask[0] = 1
             mask = np.roll(mask, shift=-1)
+
         window[0] = prevMatch.copy()
         window = np.roll(window, shift=-featN)
-        windows[matchIds[i + 1]] = (window.copy(), mask.copy())
+
+        if missing is not None:
+            missing[0] = game[missingCols].to_numpy(dtype=np.int8)
+            missing = np.roll(missing, shift=-featN)
+        windows[matchIds[i + 1]] = (window.copy(), mask.copy(), missing.copy())
 
     return windows
 
@@ -194,40 +208,53 @@ def buildAllWindows(df: pd.DataFrame,
                     featureCols: list[str],
                     yCols: List[str]|str|None=None,
                     seqLen: int=20,
-                    transform: Transform|None=None) -> MatchDataset:
+                    transform: Transform|None=None,
+                    rememberMissing: bool=True) -> MatchDataset:
     """Set yCols to None to get columns with numeric values from featureCols as Y"""
     if isinstance(yCols, str):
         yCols = [yCols]
     if yCols is None:
-        yCols = [col for col in featureCols if col in df.columns and str(df[col].dtype) in {"float64", "int64"} and not col.endswith("_days_since_last_game_normalised")]
+        yCols = [col for col in featureCols if col in df.columns and str(df[col].dtype) in {"float64", "int64"} 
+                 and not col.endswith("_days_since_last_game_normalised")
+                 and not col.endswith("time_normalised")]
     
+    missingCols = [col for col in df.columns if col.endswith("_missing")]
+
     teamDfs = matchDfToPerTeamDfs(df=df)
     Ydict = createY(df=df, yCols=yCols)
     teamWindows = {
-        team: buildTeamWindows(teamDf=tdf, featureCols=featureCols, seqLen=seqLen) 
+        team: buildTeamWindows(teamDf=tdf, featureCols=featureCols, seqLen=seqLen, missingCols=missingCols) 
         for team, tdf in teamDfs.items()
-        }
+    }
     
     Xhome = []
     Xaway = []
     Mhome = []
     Maway = []
     Yarr = []
+    missingHome = []
+    missingAway = []
 
     for matchId, homeTeam, awayTeam in zip(df["match_id"], df["home_team"], df["away_team"]):
-        Xh, Mh = teamWindows[homeTeam][matchId]
-        Xa, Ma = teamWindows[awayTeam][matchId]
+        Xh, Mah, Mih = teamWindows[homeTeam][matchId]
+        Xa, Maa, Mia = teamWindows[awayTeam][matchId]
         Y = Ydict[matchId]
         Xhome.append(Xh)
         Xaway.append(Xa)
-        Mhome.append(Mh)
-        Maway.append(Ma)
+        Mhome.append(Mah)
+        Maway.append(Maa)
+        if rememberMissing:
+            missingHome.append(Mih)
+            missingAway.append(Mia)
         Yarr.append(Y)
     
     Xhome = np.stack(Xhome)
     Xaway = np.stack(Xaway)
     Mhome = np.stack(Mhome)
     Maway = np.stack(Maway)
+    if rememberMissing:
+        missingHome = np.stack(missingHome)
+        missingAway = np.stack(missingAway)
     Y  = np.stack(Yarr)
 
     return MatchDataset(
@@ -235,6 +262,9 @@ def buildAllWindows(df: pd.DataFrame,
         Xaway=torch.from_numpy(Xaway),
         maskHome=torch.from_numpy(Mhome),
         maskAway=torch.from_numpy(Maway),
+        missingHome=torch.from_numpy(missingHome) if rememberMissing else None,
+        missingAway=torch.from_numpy(missingAway) if rememberMissing else None,
+        missingCols=missingCols,
         Y=torch.from_numpy(Y),
         featureCols=featureCols,
         yCols=yCols,
@@ -245,15 +275,15 @@ def createDataset(df: pd.DataFrame, featureCols: List[str]|None=None, type: str=
                   unkBucketDict: Dict[str, int]=UNKBUCKETDICT, normMethod: str="standard",
                   normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
                   yCols: List[str]|str|None=None, seqLen: int=20, tensorDir: str=TENSORSDIR, 
-                  transform: Transform|None=None, save: bool=True) -> MatchDataset:
+                  transform: Transform|None=None, save: bool=True, rememberMissing: bool=True) -> MatchDataset:
     train = type == "train"
     df = tokenise(df=df, train=train, fileDir=tokeniserDir, unkBucketDict=unkBucketDict)
     df = addDaysSinceLastGame(df=df)
-    df = normalise(df=df, train=train, method=normMethod, fileDir=normaliserDir, fileName=normaliserJSON)
+    df = normalise(df=df, train=train, method=normMethod, fileDir=normaliserDir, fileName=normaliserJSON, rememberMissing=rememberMissing)
     if featureCols is None:
         featureCols = [col for col in df.columns if col.endswith("_token") or col.endswith("_normalised")]
     
-    ds = buildAllWindows(df=df, featureCols=featureCols, yCols=yCols, seqLen=seqLen, transform=transform)
+    ds = buildAllWindows(df=df, featureCols=featureCols, yCols=yCols, seqLen=seqLen, transform=transform, rememberMissing=rememberMissing)
     if save:
         ds.save(parentDir=tensorDir, fileDir=type)
     return ds
@@ -263,7 +293,7 @@ def tensorDatasetsFromMatchDf(df: pd.DataFrame|None=None, trainSplit: float=0.8,
                               normMethod: str="standard", unkBucketDict: Dict[str, int]=UNKBUCKETDICT, 
                               normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
                               tokeniserDir: str=TOKENISERDIR, tensorDir: str=TENSORSDIR, 
-                              trainTransform: Transform|None=None) -> Dict[str, MatchDataset]:
+                              trainTransform: Transform|None=None, rememberMissing: bool=True) -> Dict[str, MatchDataset]:
     if df is None:
         df = prepareMatchDataFrame()
     
@@ -272,15 +302,18 @@ def tensorDatasetsFromMatchDf(df: pd.DataFrame|None=None, trainSplit: float=0.8,
     trainDs = createDataset(trainDf, featureCols=featureCols, type="train", tokeniserDir=tokeniserDir,
                             unkBucketDict=unkBucketDict, normMethod=normMethod,
                             normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
-                            yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save, transform=trainTransform)
+                            yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save, 
+                            transform=trainTransform, rememberMissing=rememberMissing)
     testDs = createDataset(testDf, featureCols=featureCols, type="test", tokeniserDir=tokeniserDir,
                             unkBucketDict=unkBucketDict, normMethod=normMethod,
                             normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
-                            yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save)
+                            yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save,
+                            rememberMissing=rememberMissing)
     valDs = createDataset(valDf, featureCols=featureCols, type="validation", tokeniserDir=tokeniserDir,
                           unkBucketDict=unkBucketDict, normMethod=normMethod,
                           normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
-                          yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save) if valDf is not None else None
+                          yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save,
+                          rememberMissing=rememberMissing) if valDf is not None else None
     tensorDict = {
         "train": trainDs,
         "test": testDs,
@@ -312,7 +345,7 @@ def prepareData(df: pd.DataFrame|None=None, type: str|None=None, trainSplit: flo
                 normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
                 tokeniserDir: str=TOKENISERDIR, tensorDir: str=TENSORSDIR, batchSize: int=64,
                 numWorkers: int=1, seed: int=42, pinMemory: bool=True, shuffle: bool|None=None,
-                trainTransform: Transform|None=None) -> Dict[str, DataLoader]|DataLoader|None:
+                trainTransform: Transform|None=None, rememberMissing: bool=True) -> Dict[str, DataLoader]|DataLoader|None:
     """set type=None to get a dict object containing test, train, and validation (if available) DataLoader objects"""
     assert type is None or type in {"train", "test", "validation"}, 'type must be None or one of "train", "test", "validation"'
     tensorDict = {}
@@ -325,7 +358,7 @@ def prepareData(df: pd.DataFrame|None=None, type: str|None=None, trainSplit: flo
         tensorDict = tensorDatasetsFromMatchDf(df=df, trainSplit=trainSplit, valSplit=valSplit, save=save, featureCols=featureCols,
                                                yCols=yCols, seqLen=seqLen, normMethod=normMethod, unkBucketDict=unkBucketDict,
                                                normaliserDir=normaliserDir, normaliserJSON=normaliserJSON, tokeniserDir=tokeniserDir,
-                                               tensorDir=tensorDir, trainTransform=trainTransform)
+                                               tensorDir=tensorDir, trainTransform=trainTransform, rememberMissing=rememberMissing)
     if type is None:
         if tensorDict["validation"] is None:
             del tensorDict["validation"]
