@@ -16,15 +16,15 @@ torch.manual_seed(seed=MANUALSEED)
 BATCHSIZE = 64
 LR = 0.0001 * (BATCHSIZE / 64)
 
-EPOCHS = 100
+EPOCHS = 200
 SAVEPOINT = 10
 
-TRIALDIR = SAVEDMODELSDIR + "/TRIAL_1_RANDOMTOKENUNK"
-MODELNAME = "MODEL_0"
+TRIALDIR = SAVEDMODELSDIR + "/TRIAL_2_RANDOMTOKENUNK_MISSINGTENSOR"
+MODELNAME = "MODEL_RTU0509"
 RESULTSNAME = f"{MODELNAME}_RESULTS.pt"
 
 if __name__=="__main__":
-    augmentation = RandomTokenUNK(prob=0.8, intensity=0.4)
+    augmentation = RandomTokenUNK(prob=0.5, intensity=0.9)
 
     dataloaders = prepareData(batchSize=BATCHSIZE, trainTransform=augmentation)
     assert isinstance(dataloaders, dict), "dataloaders is not type dict"
@@ -40,7 +40,7 @@ if __name__=="__main__":
     batch = next(iter(trainDataloader))
     for k, v in batch.items():
         print(f"{k}, {v.shape}")
-    model = MatchPredictorV0(vocabSizes=vocabSize, outDim=3, seqLen=20, 
+    model = MatchPredictorV0(vocabSizes=vocabSize, outDim=3, seqLen=20,
                              embDim=1, numFeatures=60, latentSize=20,
                              encoderNumDownBlocks=1, encoderAttnBlocksPerDown=1,
                              featExtractorDepth=1, encoderAttnDropout=0.3, featExtractorAttnDropout=0.3)
@@ -53,7 +53,7 @@ if __name__=="__main__":
                             model=model, 
                             optimizer=optimizer)
     model.to(device)
-    summary(model, input_size=[(64, 20, 60), (64, 20, 60), (64, 20), (64, 20)])
+    summary(model, input_size=[(64, 20, 60), (64, 20, 60), (64, 20), (64, 20), (64, 20, 49), (64, 20, 49)])
 
     lossFn = torch.nn.CrossEntropyLoss()
     

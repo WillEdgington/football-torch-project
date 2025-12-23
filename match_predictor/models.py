@@ -107,8 +107,9 @@ class TokenEmbedding(nn.Module):
         return out
 
 class FeatureProjector(nn.Module):
-    def __init__(self, vocabSizes: Dict[int, int], embDim: int, numFeatures: int=20, activation: str="SiLU"):
+    def __init__(self, vocabSizes: Dict[int, int], embDim: int, numFeatures: int=20, activation: str="SiLU", acceptMissing: bool=True):
         super().__init__()
+        self.acceptMissing = acceptMissing
         self.embDim = embDim
         self.embedding = TokenEmbedding(vocabSizes=vocabSizes, embDim=embDim)
 
@@ -118,14 +119,30 @@ class FeatureProjector(nn.Module):
         self.contProjs = nn.ModuleList([
             nn.Linear(1, embDim) for _ in self.contIndexes
         ])
+
+        if acceptMissing:
+            self.missingProjs = nn.ModuleList([
+                nn.Linear(1, embDim) for _ in self.contIndexes
+            ])
         self.activation = getActivation(activation=activation)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, missing: torch.Tensor|None=None) -> torch.Tensor:
         out = self.embedding(x)
         
-        for i, proj in zip(self.contIndexes, self.contProjs):
-            out[:, :, i, :] = self.activation(proj(x[:, :, i].unsqueeze(-1)))
-        
+        if missing is not None and self.acceptMissing:
+            missing = missing.float()
+            assert missing.shape[-1] == len(self.contIndexes), "missing tensor must have shape (B, T, Continuous Features)"
+            for mi, (i, cproj, mproj) in enumerate(zip(self.contIndexes, self.contProjs, self.missingProjs)):
+                miss = missing[:, :, mi].unsqueeze(-1)
+
+                valProj = cproj(x[:, :, i].unsqueeze(-1))
+                missProj = mproj(miss)
+                
+                out[:, :, i, :] = self.activation(valProj * (1.0 - miss) + missProj * miss) # missingness gate for continuous features
+        else:
+            for i, proj in zip(self.contIndexes, self.contProjs):
+                out[:, :, i, :] = self.activation(proj(x[:, :, i].unsqueeze(-1)))
+            
         return out
     
 class DownsampleBlock(nn.Module):
@@ -165,11 +182,12 @@ class Encoder(nn.Module):
                  numFeatures: int=60, outChannels: int=10, numDownBlocks: int=1,
                  attnBlocksPerDown: int=1, numAttnHeads: int=1, attnDropout: float=0.0,
                  resAttn: bool=True, convBlocksPerDown: int=1, convKernelSize: int=3, 
-                 convNorm: bool=True, convActivation: str="SiLU", resConv: bool=True):
+                 convNorm: bool=True, convActivation: str="SiLU", resConv: bool=True, 
+                 acceptMissing: bool=True):
         assert outChannels > 0, "outChannels must be a positive integer"
         assert numDownBlocks > 0, "numDownBlocks must be a positive integer"
         super().__init__()
-        self.featProject = FeatureProjector(vocabSizes=vocabSizes, embDim=embDim, numFeatures=numFeatures)
+        self.featProject = FeatureProjector(vocabSizes=vocabSizes, embDim=embDim, numFeatures=numFeatures, acceptMissing=acceptMissing)
         inChannels = numFeatures * embDim
         channels = [inChannels + (((outChannels - inChannels) * i) // numDownBlocks) for i in range(numDownBlocks + 1)]
         self.downsamples = nn.ModuleList()
@@ -180,8 +198,8 @@ class Encoder(nn.Module):
                                 convNorm=convNorm, convActivation=convActivation, resConv=resConv)
             )
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor|None=None) -> torch.Tensor:
-        x = self.featProject(x)
+    def forward(self, x: torch.Tensor, mask: torch.Tensor|None=None, missing: torch.Tensor|None=None) -> torch.Tensor:
+        x = self.featProject(x, missing)
         x = x.flatten(start_dim=2)
         for down in self.downsamples:
             x = down(x, mask)
@@ -238,7 +256,7 @@ class FeatureExtractor(nn.Module):
 
 class MatchPredictorV0(nn.Module):
     def __init__(self, vocabSizes: Dict[int, int], outDim: int, seqLen: int=20, 
-                 numFeatures: int=60, latentSize: int=10, embDim: int=2,
+                 numFeatures: int=60, latentSize: int=10, embDim: int=2, acceptMissing: bool=True,
                  encoderNumDownBlocks: int=1, encoderAttnBlocksPerDown: int=1, encoderNumAttnHeads: int=1,
                  encoderAttnDropout: float=0.0, encoderResAttn: bool=True, encoderConvBlocksPerDown: int=1,
                  encoderConvKernelSize: int=3, encoderConvNorm: bool=True, encoderConvActivation: str="SiLU",
@@ -255,7 +273,7 @@ class MatchPredictorV0(nn.Module):
                                outChannels=latentSize, numDownBlocks=encoderNumDownBlocks, attnBlocksPerDown=encoderAttnBlocksPerDown,
                                numAttnHeads=encoderNumAttnHeads, attnDropout=encoderAttnDropout, resAttn=encoderResAttn,
                                convBlocksPerDown=encoderConvBlocksPerDown, convKernelSize=encoderConvKernelSize, convNorm=encoderConvNorm,
-                               convActivation=encoderConvActivation, resConv=encoderResConv)
+                               convActivation=encoderConvActivation, resConv=encoderResConv, acceptMissing=acceptMissing)
 
         self.feature = FeatureExtractor(numFeatures=latentSize, depth=featExtractorDepth, useAttn=featExtractorUseAttn, 
                                         resAttn=featExtractorResAttn, attnDropout=featExtractorAttnDropout, numAttnHeads=featExtractorNumAttnHeads,
@@ -264,9 +282,15 @@ class MatchPredictorV0(nn.Module):
         
         self.mlp = MLP(channels=seqLen*2, numFeatures=latentSize, outDim=outDim)
 
-    def forward(self, xh: torch.Tensor, xa: torch.Tensor, mh: torch.Tensor, ma: torch.Tensor) -> torch.Tensor:
-        xh, xa = self.encoder(xh, mh), self.encoder(xa, ma)
+    def forward(self, 
+                xh: torch.Tensor, 
+                xa: torch.Tensor, 
+                maskh: torch.Tensor|None=None, 
+                maska: torch.Tensor|None=None,
+                missingHome: torch.Tensor|None=None,
+                missingAway: torch.Tensor|None=None) -> torch.Tensor:
+        xh, xa = self.encoder(xh, maskh, missingHome), self.encoder(xa, maska, missingAway)
         x = torch.cat([xh, xa], dim=1)
-        m = torch.cat([mh, ma], dim=1)
+        m = torch.cat([maskh, maska], dim=1)
         x = self.feature(x, m)
         return self.mlp(x)

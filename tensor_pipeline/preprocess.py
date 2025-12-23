@@ -183,7 +183,7 @@ def buildTeamWindows(teamDf: pd.DataFrame,
     missN = len(missingCols) if missingCols else 0
     window = np.repeat(np.zeros(featN, dtype=np.float32).reshape(1, -1), seqLen, axis=0)
     mask = np.array([0]*(seqLen - 1) + [1], dtype=np.int32) # atleast one row must be unmasked
-    missing = np.repeat(np.zeros(missN, dtype=np.int8).reshape(1, -1), seqLen, axis=0) if missingCols else None
+    missing = np.repeat(np.ones(missN, dtype=np.int8).reshape(1, -1), seqLen, axis=0) if missingCols else None
     
     windows = {matchIds[0]: (window.copy(), mask.copy(), missing.copy())}
 
