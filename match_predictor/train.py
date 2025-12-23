@@ -70,14 +70,17 @@ def trainStep(model: torch.nn.Module,
     for batch in dataloader:
         xh, xa = batch["home"].to(device), batch["away"].to(device)
         mh, ma = batch["mask_home"].to(device), batch["mask_away"].to(device)
+        missh = batch["missing_home"].to(device) if "missing_home" in batch else None
+        missa = batch["missing_away"].to(device) if "missing_away" in batch else None
         Y = batch["y"].to(device)
+
         if classification:
             Y = Y.squeeze(-1).long()
 
         optimizer.zero_grad(set_to_none=True)
 
         with torch.amp.autocast(device_type=device, enabled=(device=="cuda" and enableAmp)):
-            ylogit = model(xh, xa, mh, ma)
+            ylogit = model(xh, xa, mh, ma, missh, missa)
             loss = lossFn(ylogit, Y)
 
         if calcAccuracy:
@@ -133,12 +136,15 @@ def testStep(model: torch.nn.Module,
         for batch in dataloader:
             xh, xa = batch["home"].to(device), batch["away"].to(device)
             mh, ma = batch["mask_home"].to(device), batch["mask_away"].to(device)
+            missh = batch["missing_home"].to(device) if "missing_home" in batch else None
+            missa = batch["missing_away"].to(device) if "missing_away" in batch else None
             Y = batch["y"].to(device)
+
             if classification:
                 Y = Y.squeeze(-1).long()
 
             with torch.amp.autocast(device_type=device, enabled=(device=="cuda" and enableAmp)):
-                ylogit = model(xh, xa, mh, ma)
+                ylogit = model(xh, xa, mh, ma, missh, missa)
                 loss = lossFn(ylogit, Y)
             testLoss += loss.item()
 
@@ -174,7 +180,6 @@ def train(model: torch.nn.Module,
         if calcAccuracy:
             results["train_accuracy"] = []
             results["test_accuracy"] = []
-    
 
     classification = isinstance(lossFn, torch.nn.CrossEntropyLoss)
     goalsStd, goalsMean = None, None
@@ -182,7 +187,6 @@ def train(model: torch.nn.Module,
         with Normaliser(train=False, fileName=normaliserName) as nrm:
             goalsParams = nrm.params["goals"]
             goalsStd, goalsMean = goalsParams["std"], goalsParams["mean"]
-            
 
     for epoch in tqdm(range(epochs)):
         trainLoss, trainAccuracy = trainStep(model=model,
