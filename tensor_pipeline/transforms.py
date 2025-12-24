@@ -126,3 +126,28 @@ class RandomTokenUNK(Transform):
         sample["home"] = xh
         sample["away"] = xa
         return sample
+    
+class TemporalDropout(Transform):
+    def __init__(self,
+                 prob: float=0.2, 
+                 minKeep: int = 1):
+        assert 0 < prob <= 1, "prob must be in the range (0, 1]"
+        assert minKeep > 0, "minKeep must be a positive integer"
+        self.prob = prob
+        self.maxDrop = 0
+        self.minKeep = minKeep
+
+    def connect(self,
+                ds: Dataset):
+        self.maxDrop = ds.maskHome[0].shape[0] - self.minKeep
+
+    def __call__(self, 
+                 sample: Dict[str, torch.Tensor|Dict[str, Any]]) -> Dict[str, torch.Tensor|Dict[str, Any]]:
+        if random.random() > self.prob:
+            return sample
+        
+        for side in ("home", "away"):
+            drop = int(random.random() ** 2 * self.maxDrop)
+            sample[f"mask_{side}"][:drop] = 0
+        
+        return sample
