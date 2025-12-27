@@ -33,7 +33,7 @@ class RandomTokenUNK(Transform):
                  prob: float=0.2,
                  intensity: float=0.1):
         assert 0 < prob <= 1, "prob must be in the range (0, 1]"
-        assert 0 < intensity <= 1, "alpha must be in the range (0, 1]"
+        assert 0 < intensity <= 1, "intensity must be in the range (0, 1]"
         self.prob = prob
         self.intensity = intensity
         self.featGroups = []
@@ -149,5 +149,30 @@ class TemporalDropout(Transform):
         for side in ("home", "away"):
             drop = int(random.random() ** 2 * self.maxDrop)
             sample[f"mask_{side}"][:drop] = 0
+        
+        return sample
+    
+class MissingValueAugment(Transform):
+    def __init__(self,
+                 prob: float=0.2,
+                 intensity: float=0.2):
+        assert 0 < prob <= 1, "prob must be in the range (0, 1]"
+        assert 0 < intensity <= 1, "intensity must be in the range (0, 1]"
+        self.prob = prob
+        self.intensity = intensity
+
+    def connect(self,
+                ds: Dataset):
+        return
+
+    def __call__(self,
+                 sample: Dict[str, torch.Tensor|Dict[str, Any]]) -> Dict[str, torch.Tensor|Dict[str, Any]]:
+        if random.random() > self.prob:
+            return sample
+        
+        for side in ("home", "away"):
+            missing = sample[f"missing_{side}"]
+            corruption = torch.rand_like(missing.float()) < self.intensity
+            missing |= corruption
         
         return sample

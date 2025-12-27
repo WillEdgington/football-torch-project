@@ -1,7 +1,8 @@
 import torch
+import random
 
 from torchinfo import summary
-from tensor_pipeline import prepareData, RandomTokenUNK
+from tensor_pipeline import prepareData, RandomTokenUNK, TemporalDropout, MissingValueAugment
 
 from .models import MatchPredictorV0
 from .train import train
@@ -12,19 +13,22 @@ from .plots import plotLoss, plotAccuracy, plotResults, plotConfusionMatrix, plo
 device = "cuda" if torch.cuda.is_available() else "cpu"
 MANUALSEED = 42
 torch.manual_seed(seed=MANUALSEED)
+random.seed(MANUALSEED)
 
 BATCHSIZE = 64
 LR = 0.0001 * (BATCHSIZE / 64)
 
-EPOCHS = 40
+EPOCHS = 20
 SAVEPOINT = 10
 
-TRIALDIR = SAVEDMODELSDIR + "/TRIAL_3_RANDOMTOKENUNK_MISSINGTENSOR_PREMATCHCONTEXT"
-MODELNAME = "MODEL_RTU0509"
+TRIALDIR = SAVEDMODELSDIR + "/TRIAL_5_MISSINGVALUEAUGMENT_MISSINGTENSOR_PREMATCHCONTEXT"
+MODELNAME = "MODEL_MVA0101"
 RESULTSNAME = f"{MODELNAME}_RESULTS.pt"
 
 if __name__=="__main__":
-    augmentation = RandomTokenUNK(prob=0.5, intensity=0.9)
+    # augmentation = RandomTokenUNK(prob=0.5, intensity=0.9)
+    # augmentation = TemporalDropout(prob=0.1, minKeep=3)
+    augmentation = MissingValueAugment(prob=0.1, intensity=0.1)
 
     dataloaders = prepareData(batchSize=BATCHSIZE, trainTransform=augmentation)
     assert isinstance(dataloaders, dict), "dataloaders is not type dict"
@@ -40,6 +44,7 @@ if __name__=="__main__":
     batch = next(iter(trainDataloader))
     for k, v in batch.items():
         print(f"{k}, {v.shape}")
+        # print(f"{v[0]}\n")
     model = MatchPredictorV0(vocabSizes=vocabSize, outDim=3, seqLen=20,
                              embDim=1, numFeatures=60, latentSize=20,
                              encoderNumDownBlocks=1, encoderAttnBlocksPerDown=1,
