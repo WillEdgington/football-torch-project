@@ -176,3 +176,28 @@ class MissingValueAugment(Transform):
             missing |= corruption
         
         return sample
+    
+class ContinuousFeatureDropout(Transform):
+    def __init__(self,
+                 prob: float=0.2,
+                 intensity: float=0.2):
+        assert 0 < prob <= 1, "prob must be in the range (0, 1]"
+        assert 0 < intensity <= 1, "intensity must be in the range (0, 1]"
+        self.prob = prob
+        self.intensity = intensity
+
+    def connect(self,
+                ds: Dataset):
+        return
+
+    def __call__(self,
+                 sample: Dict[str, torch.Tensor|Dict[str, Any]]) -> Dict[str, torch.Tensor|Dict[str, Any]]:
+        if random.random() > self.prob:
+            return sample
+        
+        for side in ("home", "away"):
+            missing = sample[f"missing_{side}"]
+            F = missing.shape[1]
+            drop = torch.rand(F, device=missing.device) <= self.intensity
+            missing[:, drop] = 1
+        return sample
