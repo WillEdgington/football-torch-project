@@ -20,8 +20,6 @@ class FBRefFetcher:
         self.cacheDir.mkdir(parents=True, exist_ok=True)
         
         self.client = Client(impersonate=Impersonate.Firefox139)
-
-        self._lock = asyncio.Lock()
         self._loop = None
 
     async def fetch_async(self, url: str, cache: bool=True, mute: bool=False) -> str:
@@ -30,33 +28,32 @@ class FBRefFetcher:
         if cache and filename.exists():
             return filename.read_text(encoding="utf-8")
 
-        async with self._lock:
-            timeSinceRequest = time.time() - self.lastRequestTime
-            if timeSinceRequest < self.delay:
-                await asyncio.sleep(self.delay - timeSinceRequest)
+        timeSinceRequest = time.time() - self.lastRequestTime
+        if timeSinceRequest < self.delay:
+            await asyncio.sleep(self.delay - timeSinceRequest)
 
-            if not mute:
-                print(f"Fetching: {url}")
+        if not mute:
+            print(f"Fetching: {url}")
 
-            try:
-                response = await self.client.get(url)
-                html = await response.text()
-            except Exception as exc:
-                if self.failAttempts < 5:
-                    self.failAttempts += 1
-                    wait = 30 + (30 * self.failAttempts)
-                    if not mute:
-                        print(
-                            f"Request failed ({exc}). "
-                            f"{5 - self.failAttempts} attempts remaining. "
-                            f"Retrying in {wait}s..."
-                        )
-                    await asyncio.sleep(wait)
-                    return await self.fetch_async(url, cache, mute)
-                return ""
+        try:
+            response = await self.client.get(url)
+            html = await response.text()
+        except Exception as exc:
+            if self.failAttempts < 5:
+                self.failAttempts += 1
+                wait = 30 + (30 * self.failAttempts)
+                if not mute:
+                    print(
+                        f"Request failed ({exc}). "
+                        f"{5 - self.failAttempts} attempts remaining. "
+                        f"Retrying in {wait}s..."
+                    )
+                await asyncio.sleep(wait)
+                return await self.fetch_async(url, cache, mute)
+            return ""
 
-            self.failAttempts = 0
-            self.lastRequestTime = time.time()
+        self.failAttempts = 0
+        self.lastRequestTime = time.time()
 
         if cache:
             filename.write_text(html, encoding="utf-8")
