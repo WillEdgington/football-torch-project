@@ -1,4 +1,5 @@
 import torch
+import random
 
 from tqdm.auto import tqdm
 from typing import Dict, List, Tuple
@@ -161,6 +162,7 @@ def train(model: torch.nn.Module,
           lossFn: torch.nn.Module,
           optimizer: torch.optim.Optimizer,
           epochs: int=5,
+          seed: int|None=None,
           results: Dict[str, List[float]]|None=None,
           calcAccuracy: bool=False,
           enableAmp: bool=True,
@@ -189,6 +191,9 @@ def train(model: torch.nn.Module,
             goalsStd, goalsMean = goalsParams["std"], goalsParams["mean"]
 
     for epoch in tqdm(range(epochs)):
+        if seed is not None:
+            torch.manual_seed(seed=seed + initialEpoch + epoch - 1)
+            random.seed(seed + initialEpoch + epoch - 1)
         trainLoss, trainAccuracy = trainStep(model=model,
                                              dataloader=trainDataloader,
                                              lossFn=lossFn,
