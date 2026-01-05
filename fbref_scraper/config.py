@@ -3,11 +3,20 @@ CACHEDIR = "data/raw/fbref-html"
 RATELIMITSECONDS = 6
 
 LEAGUES = {
-    "Premier-League": "9",
-    "La-Liga": "12",
-    "Serie-A": "11",
-    "Bundesliga": "20",
-    "Ligue-1": "13"
+    "Premier-League": "9", # england
+    "Championship": "10",
+    "La-Liga": "12", # spain
+    "Segunda-Division": "17",
+    "Serie-A": "11", # italy
+    "Serie-B": "18",
+    "Bundesliga": "20", # germany
+    "2-Bundesliga": "33",
+    "Ligue-1": "13", # france
+    "Ligue-2": "60",
+    "Belgian-Pro-League": "37", # belgium
+    "Challenger-Pro-League": "69",
+    "Super-Lig": "26", # turkey (no data for 2nd div)
+    "Primeira-Liga": "32", # portugal (no data for 2nd div)
 }
 
 MATCHMETADATASCHEMA = {

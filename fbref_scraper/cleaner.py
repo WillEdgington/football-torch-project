@@ -108,8 +108,6 @@ def writeCleanDfToDB(df: pd.DataFrame, tableName: str=MATCHTABLE, dbDir: str=DBD
         if not mute:
             print(f"Cleaned data saved to.\n    Path: {db.dbPath}\n    Table name: {tableName}\nclosing writer...")
 
-
-
 def cleanFbrefData(rawDir: str=DBRAWDIR, rawName: str=DBRAWNAME, 
                    cleanDir: str=DBDIR, cleanName: str=DBNAME, 
                    mute: bool=False, overwrite: bool=False) -> pd.DataFrame:
