@@ -16,6 +16,8 @@ from .config import UNKBUCKETDICT, TOKENISERDIR, NORMALISERDIR, TENSORSDIR, PREM
 def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR, 
              unkBucketDict: Dict[str, int]=UNKBUCKETDICT) -> pd.DataFrame:
     df = df.copy()
+    newCols = {}
+
     for col in df.columns:
         if df[col].dtype != "object" or col == "match_url":
             continue
@@ -26,7 +28,10 @@ def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR,
         
         unkBuckets = unkBucketDict.get(base, 16)
         with Tokeniser(train=train, unkBuckets=unkBuckets, fileName=fileName, fileDir=fileDir) as tkn:
-            df[f"{col}_token"] = tkn.encodeSeries(df[col])
+            newCols[f"{col}_token"] = tkn.encodeSeries(df[col])
+
+    if newCols:
+        df = pd.concat([df, pd.DataFrame(newCols, index=df.index)], axis=1)
 
     return df
 
@@ -36,12 +41,14 @@ def normalise(df: pd.DataFrame, train: bool=True, eps: float=1e-8,
     assert method in {"standard", "minmax"}, 'invalid method input, Choose between: "standard", "minmax"'
     assert typeFilter is None or typeFilter in {"float64", "int64"}, 'typeFilter must be "float64", "int64", or None'
     typeFilters = {typeFilter} if typeFilter else {"float64", "int64"}
+    df = df.copy()
+    newCols = {}
 
     if len(columns) == 0:
-        for col in df.columns:
-            if str(df[col].dtype) not in typeFilters:
-                continue
-            columns.append(col)
+        columns = [
+            col for col in df.columns
+            if str(df[col].dtype) in typeFilters
+        ]
 
     with Normaliser(eps=eps, train=train, fileName=fileName, fileDir=fileDir) as nrm:
         if train:
@@ -56,16 +63,20 @@ def normalise(df: pd.DataFrame, train: bool=True, eps: float=1e-8,
                         ]), col=base)
                     continue
                 nrm.fit(df[col])
-
+        
         for col in columns:
             if col not in df.columns:
                 continue
             base = col[5:] if col.startswith("home_") or col.startswith("away_") else col
             if rememberMissing:
-                df[f"{col}_missing"] = df[col].isna().astype(np.int8)
+                newCols[f"{col}_missing"] = df[col].isna().astype(np.int8)
             
-            df[col] = df[col].fillna(value=nrm.params[base]["mean"])
-            df[f"{col}_normalised"] = nrm.encodeSeries(df[col], col=base, method=method, fit=False)
+            filled = df[col].fillna(value=nrm.params[base]["mean"])
+            newCols[f"{col}_normalised"] = nrm.encodeSeries(filled, col=base, method=method, fit=False)
+    
+    if newCols:
+        df = pd.concat([df, pd.DataFrame(newCols, index=df.index)], axis=1)
+
     return df
 
 def splitDataFrame(df: pd.DataFrame, trainSplit: float=0.8) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -249,7 +260,7 @@ def buildTeamWindows(teamDf: pd.DataFrame,
             missing[0] = missingInRow.copy() | preMissCols
             missing = np.roll(missing, shift=-1, axis=0)
 
-        windows[matchId] = (window.copy(), mask.copy(), missing.copy())
+        windows[matchId] = (window.copy(), mask.copy(), missing.copy() if missing is not None else None)
         window[-1] = curMatch.copy()
         if missing is not None:
             missing[-1] = missingInRow.copy()
