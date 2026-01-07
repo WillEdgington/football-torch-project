@@ -27,6 +27,8 @@ class Tokeniser:
         if token in self.stoid:
             return self.stoid[token]
         if self.train:
+            if not token:
+                return 1
             newID = len(self.idtos)
             self.stoid[token] = newID
             self.idtos.append(token)

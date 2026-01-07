@@ -1,7 +1,7 @@
 UNKBUCKETDICT = {
     "captain": 16,
     "day": 1,
-    "league": 1,
+    "league": 4,
     "manager": 32,
     "referee": 32,
     "season": 8,
