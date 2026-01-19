@@ -11,6 +11,7 @@ from .tokeniser import Tokeniser
 from .normaliser import Normaliser
 from .match_dataset import MatchDataset
 from .transforms import Transform
+from .sample_store import SampleStore
 from .config import UNKBUCKETDICT, TOKENISERDIR, NORMALISERDIR, TENSORSDIR, PREMATCHDATACOLS
 
 def tokenise(df: pd.DataFrame, train: bool=True, fileDir: str=TOKENISERDIR, 
@@ -172,7 +173,9 @@ def matchDfToPerTeamDfs(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
              for team, g in longDf.groupby("team")}
     return teams
 
-def createY(df: pd.DataFrame, yCols: List[str]|str="result") -> Dict[str, np.ndarray]:
+def createY(df: pd.DataFrame,
+            yCols: List[str]|str="result",
+            groupCol: str="league") -> Dict[str, Tuple[np.ndarray, str]]:
     df = df.copy()
     if isinstance(yCols, str):
         yCols = [yCols]
@@ -181,12 +184,18 @@ def createY(df: pd.DataFrame, yCols: List[str]|str="result") -> Dict[str, np.nda
         df["result"] = df["goal_diff"].apply(lambda gd: 2 if gd > 0 else (0 if gd < 0 else 1))
     
     matchIds = df["match_id"].to_list()
-    return {matchIds[i]: df[df["match_id"] == matchIds[i]][yCols].to_numpy(dtype=np.float32).reshape(-1) for i in range(len(matchIds))}
+    return {
+        matchIds[i]: (
+            df[df["match_id"] == matchIds[i]][yCols].to_numpy(dtype=np.float32).reshape(-1),
+            str(df.loc[df["match_id"] == matchIds[i], groupCol].iloc[0])
+            )
+        for i in range(len(matchIds))
+        }
 
-def buildTeamWindowsV0(teamDf: pd.DataFrame, 
-                       featureCols: List[str], 
+def buildTeamWindowsV0(teamDf: pd.DataFrame,
+                       featureCols: List[str],
                        seqLen: int=20,
-                       missingCols: List[str]|None=None) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
+                       missingCols: List[str]|None=None) -> Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray|None]]:
     teamDf = teamDf.sort_values("date").reset_index(drop=True)
     matchIds = teamDf["match_id"].tolist()
     
@@ -267,13 +276,91 @@ def buildTeamWindows(teamDf: pd.DataFrame,
 
     return windows
 
-def buildAllWindows(df: pd.DataFrame,
-                    featureCols: list[str],
-                    yCols: List[str]|str|None=None,
-                    seqLen: int=20,
-                    transform: Transform|None=None,
-                    rememberMissing: bool=True,
-                    preMatchData: Set[str]|None=PREMATCHDATACOLS) -> MatchDataset:
+def constructTokenContCols(featureCols: List[str], 
+                           tokeniserDir: str=TOKENISERDIR) -> Tuple[Dict[str, List[int]], Dict[str, List[int]]]:
+    tokenCols = {
+        "index": [],
+        "size": [],
+        "unkBucketSize": []
+    }
+    contCols = {
+        "index": [],
+    }
+    sizeCache = {}
+
+    for i, col in enumerate(featureCols):
+        if not col.endswith("_token"):
+            contCols["index"].append(i)
+            continue
+        tokenCols["index"].append(i)
+        
+        base = col.removesuffix("_token")
+        if base.startswith("home_") or base.startswith("away_"):
+            base = base.removeprefix("home_").removeprefix("away_")
+        fileName = f"{base}_tokeniser.json"
+        
+        if base in sizeCache:
+            tokenCols["size"].append(sizeCache[base][0])
+            tokenCols["unkBucketSize"].append(sizeCache[base][1])
+            del sizeCache[base]
+            continue
+
+        with Tokeniser(train=False, fileName=fileName, fileDir=tokeniserDir) as tkn:
+            sizeCache[base] = (len(tkn.idtos), tkn.unkBuckets)
+            tokenCols["size"].append(sizeCache[base][0])
+            tokenCols["unkBucketSize"].append(sizeCache[base][1])
+        
+    return tokenCols, contCols
+
+def buildMetaData(featureCols: List[str],
+                  yCols: List[str],
+                  maxSeqLen: int=50,
+                  tokenCols: Dict[str, List[int]]|None=None,
+                  contCols: Dict[str, List[int]]|None=None,
+                  missingCols: List[str]|None=None,
+                  tokeniserDir: str=TOKENISERDIR) -> Dict[str, Any]:
+    if tokenCols is None or contCols is None:
+        tokenCols, contCols = constructTokenContCols(featureCols=featureCols,
+                                                     tokeniserDir=tokeniserDir)
+    meta = {
+        "maxSeqLen": maxSeqLen,
+        "featureCols": featureCols,
+        "yCols": yCols,
+        "tokenCols": tokenCols,
+        "contCols": contCols,
+    }
+    if missingCols is not None:
+        meta["missingCols"] = missingCols
+    return meta
+
+def buildSample(home: np.ndarray,
+                away: np.ndarray,
+                maskHome: np.ndarray,
+                maskAway: np.ndarray,
+                y: np.ndarray,
+                missingHome: np.ndarray|None=None,
+                missingAway: np.ndarray|None=None) -> Dict[str, torch.Tensor]:
+    sample = {
+        "home": torch.from_numpy(home),
+        "away": torch.from_numpy(away),
+        "mask_home": torch.from_numpy(maskHome),
+        "mask_away": torch.from_numpy(maskAway),
+        "y": torch.from_numpy(y), 
+    }
+
+    if missingHome is not None and missingAway is not None:
+        sample["missing_home"] = torch.from_numpy(missingHome)
+        sample["missing_away"] = torch.from_numpy(missingAway)
+    
+    return sample
+
+def buildGroupedSamples(df: pd.DataFrame,
+                        featureCols: List[str],
+                        yCols: List[str]|str|None=None,
+                        missingCols: List[str]|None=None,
+                        maxSeqLen: int=50,
+                        preMatchData: Set[str]|None=PREMATCHDATACOLS,
+                        groupCol: str="league") -> Dict[str, List[Dict[str, torch.Tensor]]]:
     """Set yCols to None to get columns with numeric values from featureCols as Y"""
     if isinstance(yCols, str):
         yCols = [yCols]
@@ -281,116 +368,194 @@ def buildAllWindows(df: pd.DataFrame,
         yCols = [col for col in featureCols if col in df.columns and str(df[col].dtype) in {"float64", "int64"} 
                  and not col.endswith("_days_since_last_game_normalised")
                  and not col.endswith("time_normalised")]
-    
-    missingCols = [col for col in df.columns if col.endswith("_missing")]
 
     teamDfs = matchDfToPerTeamDfs(df=df)
-    Ydict = createY(df=df, yCols=yCols)
+    Ydict = createY(df=df, yCols=yCols, groupCol=groupCol)
     teamWindows = {
-        team: buildTeamWindows(teamDf=tdf, featureCols=featureCols, seqLen=seqLen, missingCols=missingCols, preMatchData=preMatchData) 
+        team: buildTeamWindows(teamDf=tdf, featureCols=featureCols, seqLen=maxSeqLen, missingCols=missingCols, preMatchData=preMatchData) 
         for team, tdf in teamDfs.items()
     }
-    
-    Xhome = []
-    Xaway = []
-    Mhome = []
-    Maway = []
-    Yarr = []
-    missingHome = []
-    missingAway = []
+
+    groupedSamples = {}
 
     for matchId, homeTeam, awayTeam in zip(df["match_id"], df["home_team"], df["away_team"]):
         Xh, Mah, Mih = teamWindows[homeTeam][matchId]
         Xa, Maa, Mia = teamWindows[awayTeam][matchId]
-        Y = Ydict[matchId]
-        Xhome.append(Xh)
-        Xaway.append(Xa)
-        Mhome.append(Mah)
-        Maway.append(Maa)
-        if rememberMissing:
-            missingHome.append(Mih)
-            missingAway.append(Mia)
-        Yarr.append(Y)
-    
-    Xhome = np.stack(Xhome)
-    Xaway = np.stack(Xaway)
-    Mhome = np.stack(Mhome)
-    Maway = np.stack(Maway)
-    if rememberMissing:
-        missingHome = np.stack(missingHome)
-        missingAway = np.stack(missingAway)
-    Y  = np.stack(Yarr)
+        Y, group = Ydict[matchId]
 
-    return MatchDataset(
-        Xhome=torch.from_numpy(Xhome),
-        Xaway=torch.from_numpy(Xaway),
-        maskHome=torch.from_numpy(Mhome),
-        maskAway=torch.from_numpy(Maway),
-        missingHome=torch.from_numpy(missingHome) if rememberMissing else None,
-        missingAway=torch.from_numpy(missingAway) if rememberMissing else None,
-        missingCols=missingCols,
-        Y=torch.from_numpy(Y),
-        featureCols=featureCols,
-        yCols=yCols,
-        transform=transform
-    )
+        groupedSamples.setdefault(group, [])
+        groupedSamples[group].append(buildSample(home=Xh,
+                                                 away=Xa,
+                                                 maskHome=Mah,
+                                                 maskAway=Maa,
+                                                 y=Y,
+                                                 missingHome=Mih,
+                                                 missingAway=Mia))
 
-def createDataset(df: pd.DataFrame, featureCols: List[str]|None=None, type: str="train", tokeniserDir: str=TOKENISERDIR, 
-                  unkBucketDict: Dict[str, int]=UNKBUCKETDICT, normMethod: str="standard",
-                  normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
-                  yCols: List[str]|str|None=None, seqLen: int=20, tensorDir: str=TENSORSDIR, 
-                  transform: Transform|None=None, save: bool=True, rememberMissing: bool=True,
-                  preMatchData: Set[str]|None=PREMATCHDATACOLS) -> MatchDataset:
-    train = type == "train"
-    df = tokenise(df=df, train=train, fileDir=tokeniserDir, unkBucketDict=unkBucketDict)
+    return groupedSamples
+
+def storeGroupedSamples(store: SampleStore,
+                        groupedSamples: Dict[str, List[Dict[str, torch.Tensor]]],
+                        split: str):
+    for group, samples in groupedSamples.items():
+        store.store(split=split, group=group, samples=samples)
+    store.finalise()
+
+def buildAndStoreSamplesFromDfSplit(df: pd.DataFrame,
+                                    featureCols: List[str]|None=None,
+                                    split: str="train",
+                                    tokeniserDir: str=TOKENISERDIR,
+                                    unkBucketDict: Dict[str, int]=UNKBUCKETDICT, 
+                                    normMethod: str="standard",
+                                    normaliserDir: str=NORMALISERDIR, 
+                                    normaliserJSON: str="numeric_normaliser.json",
+                                    yCols: List[str]|str|None=None, 
+                                    maxSeqLen: int=50, 
+                                    tensorDir: str=TENSORSDIR, 
+                                    rememberMissing: bool=True,
+                                    preMatchData: Set[str]|None=PREMATCHDATACOLS,
+                                    shardSize: int=1024,
+                                    groupCol: str="league") -> SampleStore:
+    train = split == "train"
+    df = tokenise(df=df, 
+                  train=train, 
+                  fileDir=tokeniserDir, 
+                  unkBucketDict=unkBucketDict)
     df = addDaysSinceLastGame(df=df)
-    df = normalise(df=df, train=train, method=normMethod, fileDir=normaliserDir, fileName=normaliserJSON, rememberMissing=rememberMissing)
+    df = normalise(df=df, 
+                   train=train, 
+                   method=normMethod, 
+                   fileDir=normaliserDir, 
+                   fileName=normaliserJSON, 
+                   rememberMissing=rememberMissing)
     if featureCols is None:
         featureCols = [col for col in df.columns if col.endswith("_token") or col.endswith("_normalised")]
-    
-    ds = buildAllWindows(df=df, featureCols=featureCols, yCols=yCols, 
-                         seqLen=seqLen, transform=transform, rememberMissing=rememberMissing, 
-                         preMatchData=preMatchData)
-    if save:
-        ds.save(parentDir=tensorDir, fileDir=type)
-    return ds
+    missingCols = [col for col in df.columns if col.endswith("_missing")] if rememberMissing else None
+    groupedSamples = buildGroupedSamples(df=df,
+                                         featureCols=featureCols,
+                                         yCols=yCols,
+                                         maxSeqLen=maxSeqLen,
+                                         missingCols=missingCols,
+                                         preMatchData=preMatchData,
+                                         groupCol=groupCol)
+    meta = buildMetaData(featureCols=featureCols,
+                         yCols=yCols,
+                         maxSeqLen=maxSeqLen,
+                         tokenCols=None,
+                         contCols=None,
+                         missingCols=missingCols,
+                         tokeniserDir=tokeniserDir)
+    store = SampleStore(rootDir=tensorDir,
+                        shardSize=shardSize,
+                        metadata=meta,
+                        device="cpu")
+    storeGroupedSamples(store=store,
+                        groupedSamples=groupedSamples,
+                        split=split)
+    return store
 
-def tensorDatasetsFromMatchDf(df: pd.DataFrame|None=None, trainSplit: float=0.8, valSplit: float=0.2, save: bool=True,
-                              featureCols: List[str]|None=None, yCols: List[str]|str|None="result", seqLen: int=20,
-                              normMethod: str="standard", unkBucketDict: Dict[str, int]=UNKBUCKETDICT, 
-                              normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
-                              tokeniserDir: str=TOKENISERDIR, tensorDir: str=TENSORSDIR, 
-                              trainTransform: Transform|None=None, rememberMissing: bool=True,
-                              preMatchData: Set[str]|None=PREMATCHDATACOLS) -> Dict[str, MatchDataset]:
+def createTrainTestDatasets(store: SampleStore,
+                            seqLen: int=20,
+                            validation: bool=True,
+                            trainTransform: Transform|None=None,
+                            group: List[str]|str|None=None) -> Dict[str, MatchDataset]:
+    "set group to None to get all groups"
+    trainDs = MatchDataset(store=store,
+                           seqLen=seqLen,
+                           transform=trainTransform,
+                           split="train",
+                           group=group)
+    testDs = MatchDataset(store=store,
+                          seqLen=seqLen,
+                          transform=None,
+                          split="test",
+                          group=group)
+    datasets = {
+        "train": trainDs,
+        "test": testDs
+    }
+    if validation:
+        datasets["validation"] = MatchDataset(store=store,
+                                              seqLen=seqLen,
+                                              transform=None,
+                                              split="validation",
+                                              group=group)
+    return datasets
+
+def tensorStoreFromMatchDF(df: pd.DataFrame|None=None,
+                           trainSplit: float=0.8,
+                           valSplit: float=0.2,
+                           featureCols: List[str]|None=None,
+                           yCols: List[str]|str|None="result",
+                           maxSeqLen: int=50,
+                           normMethod: str="standard",
+                           unkBucketDict: Dict[str, int]=UNKBUCKETDICT,
+                           normaliserDir: str=NORMALISERDIR,
+                           normaliserJSON: str="numeric_normaliser.json",
+                           tokeniserDir: str=TOKENISERDIR,
+                           tensorDir: str=TENSORSDIR,
+                           rememberMissing: bool=True,
+                           preMatchData: Set[str]|None=PREMATCHDATACOLS,
+                           shardSize: int=1024,
+                           groupCol: str="league") -> SampleStore:
     if df is None:
         df = prepareMatchDataFrame()
-    
+
     trainDf, testDf, valDf = getTemporalSplits(df=df, trainSplit=trainSplit, valSplit=valSplit)
+    buildAndStoreSamplesFromDfSplit(df=trainDf,
+                                    featureCols=featureCols,
+                                    split="train",
+                                    tokeniserDir=tokeniserDir,
+                                    unkBucketDict=unkBucketDict,
+                                    normMethod=normMethod,
+                                    normaliserDir=normaliserDir,
+                                    normaliserJSON=normaliserJSON,
+                                    yCols=yCols,
+                                    maxSeqLen=maxSeqLen,
+                                    tensorDir=tensorDir,
+                                    rememberMissing=rememberMissing,
+                                    preMatchData=preMatchData,
+                                    shardSize=shardSize,
+                                    groupCol=groupCol)
+    if valDf is not None:
+        buildAndStoreSamplesFromDfSplit(df=valDf,
+                                        featureCols=featureCols,
+                                        split="validation",
+                                        tokeniserDir=tokeniserDir,
+                                        unkBucketDict=unkBucketDict,
+                                        normMethod=normMethod,
+                                        normaliserDir=normaliserDir,
+                                        normaliserJSON=normaliserJSON,
+                                        yCols=yCols,
+                                        maxSeqLen=maxSeqLen,
+                                        tensorDir=tensorDir,
+                                        rememberMissing=rememberMissing,
+                                        preMatchData=preMatchData,
+                                        shardSize=shardSize,
+                                        groupCol=groupCol)
+    store = buildAndStoreSamplesFromDfSplit(df=testDf,
+                                            featureCols=featureCols,
+                                            split="test",
+                                            tokeniserDir=tokeniserDir,
+                                            unkBucketDict=unkBucketDict,
+                                            normMethod=normMethod,
+                                            normaliserDir=normaliserDir,
+                                            normaliserJSON=normaliserJSON,
+                                            yCols=yCols,
+                                            maxSeqLen=maxSeqLen,
+                                            tensorDir=tensorDir,
+                                            rememberMissing=rememberMissing,
+                                            preMatchData=preMatchData,
+                                            shardSize=shardSize,
+                                            groupCol=groupCol)
+    return store
 
-    trainDs = createDataset(trainDf, featureCols=featureCols, type="train", tokeniserDir=tokeniserDir,
-                            unkBucketDict=unkBucketDict, normMethod=normMethod,
-                            normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
-                            yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save, 
-                            transform=trainTransform, rememberMissing=rememberMissing,
-                            preMatchData=preMatchData)
-    testDs = createDataset(testDf, featureCols=featureCols, type="test", tokeniserDir=tokeniserDir,
-                            unkBucketDict=unkBucketDict, normMethod=normMethod,
-                            normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
-                            yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save,
-                            rememberMissing=rememberMissing, preMatchData=preMatchData)
-    valDs = createDataset(valDf, featureCols=featureCols, type="validation", tokeniserDir=tokeniserDir,
-                          unkBucketDict=unkBucketDict, normMethod=normMethod,
-                          normaliserDir=normaliserDir, normaliserJSON=normaliserJSON,
-                          yCols=yCols, seqLen=seqLen, tensorDir=tensorDir, save=save,
-                          rememberMissing=rememberMissing, preMatchData=preMatchData) if valDf is not None else None
-    tensorDict = {
-        "train": trainDs,
-        "test": testDs,
-    }
-    if valDs is not None:
-        tensorDict["validation"] = valDs
-
-    return tensorDict
+def checkForStore(tensorDir: str=TENSORSDIR) -> None|SampleStore:
+    store = SampleStore(rootDir=tensorDir,
+                        metadata={})
+    if store.numSamples > 0:
+        return store
+    return None
 
 def createDataLoader(dataset: MatchDataset, batchSize: int=64, shuffle: bool=True, 
                      numWorkers: int=1, seed: int=42, pinMemory: bool=True) -> DataLoader:
@@ -408,33 +573,91 @@ def createDataLoaders(tensorDict: Dict[str, MatchDataset], batchSize: int=64,
     
     return loaderDict
 
-def prepareData(df: pd.DataFrame|None=None, type: str|None=None, trainSplit: float=0.8, valSplit: float=0.2, save: bool=True,
-                featureCols: List[str]|None=None, yCols: List[str]|str|None="result", seqLen: int=20,
-                normMethod: str="standard", unkBucketDict: Dict[str, int]=UNKBUCKETDICT, 
-                normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
-                tokeniserDir: str=TOKENISERDIR, tensorDir: str=TENSORSDIR, batchSize: int=64,
-                numWorkers: int=1, seed: int=42, pinMemory: bool=True, shuffle: bool|None=None,
-                trainTransform: Transform|None=None, rememberMissing: bool=True, 
-                preMatchData: Set[str]|None=PREMATCHDATACOLS) -> Dict[str, DataLoader]|DataLoader|None:
-    """set type=None to get a dict object containing test, train, and validation (if available) DataLoader objects"""
-    assert type is None or type in {"train", "test", "validation"}, 'type must be None or one of "train", "test", "validation"'
-    tensorDict = {}
-    types = [type] if type is not None else ["train", "test", "validation"]
-    for split in types:
-        transform = trainTransform if split == "train" else None
-        tensorDict[split] = MatchDataset.load(transform=transform, parentDir=tensorDir, fileDir=split)
+def prepareData(df: pd.DataFrame|None=None,
+                split: str|None=None,
+                trainSplit: float=0.8,
+                valSplit: float=0.2,
+                featureCols: List[str]|None=None,
+                yCols: List[str]|str|None="result",
+                maxSeqLen: int=50,
+                normMethod: str="standard",
+                unkBucketDict: Dict[str, int]=UNKBUCKETDICT,
+                normaliserDir: str=NORMALISERDIR,
+                normaliserJSON: str="numeric_normaliser.json",
+                tokeniserDir: str=TOKENISERDIR,
+                tensorDir: str=TENSORSDIR,
+                rememberMissing: bool=True,
+                preMatchData: set[str]|None=PREMATCHDATACOLS,
+                shardSize: int=1024,
+                seqLen: int=20,
+                trainTransform: Transform|None=None,
+                groupCol: str="league",
+                groups: List[str]|str|None=None,
+                batchSize: int=64,
+                numWorkers: int=1,
+                seed: int=42,
+                pinMemory: bool=True) -> Dict[str, DataLoader]:
+    """set split=None to get a dict object containing test, train, and validation (if available) DataLoader objects"""
+    assert split is None or split in {"train", "test", "validation"}, 'split must be None or one of "train", "test", "validation"'
+    splits = [split] if split is not None else ["train", "test", "validation"]
 
-    if all(val is None for val in tensorDict.values()):
-        tensorDict = tensorDatasetsFromMatchDf(df=df, trainSplit=trainSplit, valSplit=valSplit, save=save, featureCols=featureCols,
-                                               yCols=yCols, seqLen=seqLen, normMethod=normMethod, unkBucketDict=unkBucketDict,
-                                               normaliserDir=normaliserDir, normaliserJSON=normaliserJSON, tokeniserDir=tokeniserDir,
-                                               tensorDir=tensorDir, trainTransform=trainTransform, rememberMissing=rememberMissing,
-                                               preMatchData=preMatchData)
-    if type is None:
-        if tensorDict["validation"] is None:
-            del tensorDict["validation"]
-        return createDataLoaders(tensorDict=tensorDict, batchSize=batchSize, numWorkers=numWorkers, seed=seed, pinMemory=pinMemory)
-    dataset = tensorDict[type]
-    shuffle = shuffle if shuffle is not None else type == "train"
-    return createDataLoader(dataset=dataset, batchSize=batchSize, shuffle=shuffle, 
-                            numWorkers=numWorkers, seed=seed, pinMemory=pinMemory) if dataset is not None else None
+    store = checkForStore(tensorDir=tensorDir)
+    if store is None:
+        store = tensorStoreFromMatchDF(df=df,
+                                       trainSplit=trainSplit,
+                                       valSplit=valSplit,
+                                       featureCols=featureCols,
+                                       yCols=yCols,
+                                       maxSeqLen=maxSeqLen,
+                                       normMethod=normMethod,
+                                       unkBucketDict=unkBucketDict,
+                                       normaliserDir=normaliserDir,
+                                       normaliserJSON=normaliserJSON,
+                                       tokeniserDir=tokeniserDir,
+                                       tensorDir=tensorDir,
+                                       rememberMissing=rememberMissing,
+                                       preMatchData=preMatchData,
+                                       shardSize=shardSize,
+                                       groupCol=groupCol)
+
+    datasets = createTrainTestDatasets(store=store,
+                                       seqLen=seqLen,
+                                       validation=valSplit > 0,
+                                       trainTransform=trainTransform,
+                                       group=groups)
+    return createDataLoaders(tensorDict=datasets,
+                             batchSize=batchSize,
+                             numWorkers=numWorkers,
+                             seed=seed,
+                             pinMemory=pinMemory)
+
+# def prepareData(df: pd.DataFrame|None=None, type: str|None=None, trainSplit: float=0.8, valSplit: float=0.2, save: bool=True,
+#                 featureCols: List[str]|None=None, yCols: List[str]|str|None="result", seqLen: int=20,
+#                 normMethod: str="standard", unkBucketDict: Dict[str, int]=UNKBUCKETDICT, 
+#                 normaliserDir: str=NORMALISERDIR, normaliserJSON: str="numeric_normaliser.json",
+#                 tokeniserDir: str=TOKENISERDIR, tensorDir: str=TENSORSDIR, batchSize: int=64,
+#                 numWorkers: int=1, seed: int=42, pinMemory: bool=True, shuffle: bool|None=None,
+#                 trainTransform: Transform|None=None, rememberMissing: bool=True, 
+#                 preMatchData: Set[str]|None=PREMATCHDATACOLS) -> Dict[str, DataLoader]|DataLoader|None:
+#     """set type=None to get a dict object containing test, train, and validation (if available) DataLoader objects"""
+#     assert type is None or type in {"train", "test", "validation"}, 'type must be None or one of "train", "test", "validation"'
+#     tensorDict = {}
+#     types = [type] if type is not None else ["train", "test", "validation"]
+#     for split in types:
+#         transform = trainTransform if split == "train" else None
+#         tensorDict[split] = MatchDataset.load(transform=transform, parentDir=tensorDir, fileDir=split)
+
+#     if all(val is None for val in tensorDict.values()):
+#         tensorDict = tensorDatasetsFromMatchDf(df=df, trainSplit=trainSplit, valSplit=valSplit, save=save, featureCols=featureCols,
+#                                                yCols=yCols, seqLen=seqLen, normMethod=normMethod, unkBucketDict=unkBucketDict,
+#                                                normaliserDir=normaliserDir, normaliserJSON=normaliserJSON, tokeniserDir=tokeniserDir,
+#                                                tensorDir=tensorDir, trainTransform=trainTransform, rememberMissing=rememberMissing,
+#                                                preMatchData=preMatchData)
+#     if type is None:
+#         if tensorDict["validation"] is None:
+#             del tensorDict["validation"]
+#         return createDataLoaders(tensorDict=tensorDict, batchSize=batchSize, numWorkers=numWorkers, seed=seed, pinMemory=pinMemory)
+#     dataset = tensorDict[type]
+#     shuffle = shuffle if shuffle is not None else type == "train"
+#     return createDataLoader(dataset=dataset, batchSize=batchSize, shuffle=shuffle, 
+#                             numWorkers=numWorkers, seed=seed, pinMemory=pinMemory) if dataset is not None else None

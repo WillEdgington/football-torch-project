@@ -139,7 +139,7 @@ class TemporalDropout(Transform):
 
     def connect(self,
                 ds: Dataset):
-        self.maxDrop = ds.maskHome[0].shape[0] - self.minKeep
+        self.maxDrop = ds.seqLen - self.minKeep
 
     def __call__(self, 
                  sample: Dict[str, torch.Tensor|Dict[str, Any]]) -> Dict[str, torch.Tensor|Dict[str, Any]]:

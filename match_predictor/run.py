@@ -2,7 +2,7 @@ import torch
 import random
 
 from torchinfo import summary
-from tensor_pipeline import prepareData, RandomTokenUNK, TemporalDropout, MissingValueAugment
+from tensor_pipeline import prepareData, RandomTokenUNK, TemporalDropout, MissingValueAugment, ContinuousFeatureDropout, Compose
 
 from .models import MatchPredictorV0
 from .train import train
@@ -21,14 +21,17 @@ LR = 0.0001 * (BATCHSIZE / 64)
 EPOCHS = 20
 SAVEPOINT = 10
 
-TRIALDIR = SAVEDMODELSDIR + "/TRIAL_5_MISSINGVALUEAUGMENT_MISSINGTENSOR_PREMATCHCONTEXT"
-MODELNAME = "MODEL_MVA0101"
+TRIALDIR = SAVEDMODELSDIR + "/TRIAL_11_BIGGERDATA_73626_SHARDING"
+MODELNAME = "MODEL_RTU0709_TD0101_MVA01005_CFD01005_BS128_LS40_EMBD2_EABPD1_ENDB1_EAD03_EAH2_FEAD03_FEAH2"
 RESULTSNAME = f"{MODELNAME}_RESULTS.pt"
 
 if __name__=="__main__":
-    # augmentation = RandomTokenUNK(prob=0.5, intensity=0.9)
-    # augmentation = TemporalDropout(prob=0.1, minKeep=3)
-    augmentation = MissingValueAugment(prob=0.1, intensity=0.1)
+    augmentation = Compose([
+                        RandomTokenUNK(prob=0.7, intensity=0.9),
+                        TemporalDropout(prob=0.1, minKeep=1),
+                        MissingValueAugment(prob=0.1, intensity=0.05),
+                        ContinuousFeatureDropout(prob=0.1, intensity=0.05)
+    ])
 
     dataloaders = prepareData(batchSize=BATCHSIZE, trainTransform=augmentation)
     assert isinstance(dataloaders, dict), "dataloaders is not type dict"
@@ -46,16 +49,17 @@ if __name__=="__main__":
         print(f"{k}, {v.shape}")
         # print(f"{v[0]}\n")
     model = MatchPredictorV0(vocabSizes=vocabSize, outDim=3, seqLen=20,
-                             embDim=1, numFeatures=60, latentSize=20,
-                             encoderNumDownBlocks=1, encoderAttnBlocksPerDown=1,
-                             featExtractorDepth=1, encoderAttnDropout=0.3, featExtractorAttnDropout=0.3)
+                             embDim=2, numFeatures=60, latentSize=40,
+                             encoderNumDownBlocks=2, encoderAttnBlocksPerDown=1,
+                             featExtractorDepth=3, encoderAttnDropout=0.3, featExtractorAttnDropout=0.3,
+                             encoderNumAttnHeads=2, featExtractorNumAttnHeads=2)
     model.to(device)
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=LR, weight_decay=0.0001)
 
     if epochsComplete > 0:
         states = loadStates(stateName=f"{MODELNAME}_EPOCHS_{epochsComplete}.pt",
                             stateDir=TRIALDIR,
-                            model=model, 
+                            model=model,
                             optimizer=optimizer)
     model.to(device)
     summary(model, input_size=[(64, 20, 60), (64, 20, 60), (64, 20), (64, 20), (64, 20, 49), (64, 20, 49)])
@@ -69,6 +73,7 @@ if __name__=="__main__":
                         lossFn=lossFn,
                         optimizer=optimizer,
                         epochs=SAVEPOINT,
+                        seed=MANUALSEED,
                         results=results,
                         calcAccuracy=True,
                         enableAmp=True,
