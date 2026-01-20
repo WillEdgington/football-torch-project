@@ -2,7 +2,7 @@ import torch
 import json
 
 from pathlib import Path
-from typing import Dict, List, Any, Set
+from typing import Dict, List, Any, Set, Tuple
 
 from .config import TENSORSDIR
 
@@ -27,7 +27,7 @@ class SampleStore:
 
         self.indices: Dict[str, Dict[str, List[int]]] = {}
         self._shardCache: Dict[int, Dict[str, torch.Tensor]] = {}
-        self._sampleKeys: Set[str]|None = None
+        self._sampleKeys: Tuple[str, ...]|None = None
         self.numSamples = 0
 
         self._activeShardId = None
@@ -60,7 +60,7 @@ class SampleStore:
         shard = torch.load(shardPath)
 
         if self._sampleKeys is not None:
-            assert set(shard.keys()) == self._sampleKeys
+            assert set(shard.keys()) == set(self._sampleKeys)
 
         self._activeShardId = lastShardId
         self._activeShard = shard
@@ -74,9 +74,9 @@ class SampleStore:
         self._activeShard = {k: [] for k in sample.keys()}
 
         if self._sampleKeys is None:
-            self._sampleKeys = set(sample.keys())
+            self._sampleKeys = tuple(sample.keys())
         else:
-            assert set(sample.keys()) == self._sampleKeys
+            assert tuple(sample.keys()) == self._sampleKeys
 
     def _flushActiveShard(self):
         if self._activeShard is None:
@@ -134,8 +134,8 @@ class SampleStore:
                    shardId: int) -> Dict[str, Any]:
         return torch.load(self._shardPath(shardId=shardId), map_location=self.device)
 
-    def get(self,
-            idx: int):
+    def getDict(self,
+                idx: int) -> Dict[str, torch.Tensor]:
         assert idx < self.numSamples and idx >= 0, f"index ({idx}) out of range for samples stored ({self.numSamples})"
         shardId = self._shardId(idx)
         offset = idx % self.shardSize
@@ -150,8 +150,24 @@ class SampleStore:
             for key, val in shard.items()
         }
     
-    def get_many(self, indices: List[int]) -> List[Dict[str, Any]]:
-        return [self.get(i) for i in indices]
+    def getTuple(self,
+                 idx: int) -> Tuple[torch.Tensor, ...]:
+        assert idx < self.numSamples and idx >= 0, f"index ({idx}) out of range for samples stored ({self.numSamples})"
+        shardId = self._shardId(idx)
+        offset = idx % self.shardSize
+
+        shard = self._shardCache.get(shardId)
+        if shard is None:
+            shard = self._loadShard(shardId)
+            self._shardCache[shardId] = shard
+        
+        return tuple(
+            shard[key][offset]
+            for key in self._sampleKeys
+        )
+    
+    def getMany(self, indices: List[int]) -> List[Dict[str, Any]]:
+        return [self.getTuple(i) for i in indices]
 
     def save(self):
         with open(self.indexPath, "w") as f:
@@ -191,4 +207,4 @@ class SampleStore:
                         state: Dict[str, Any]):
         self.shardSize = state["shard_size"]
         self.numSamples = state["num_samples"]
-        self._sampleKeys = set(state["sample_keys"])
+        self._sampleKeys = tuple(state["sample_keys"])

@@ -7,7 +7,7 @@ from tensor_pipeline import prepareData, RandomTokenUNK, TemporalDropout, Missin
 from .models import MatchPredictorV0
 from .train import train
 from .save import saveStates, saveTorchObject, loadResultsMap, loadStates
-from .config import SAVEDMODELSDIR
+from .config import SAVEDMODELSDIR, BIGFIVELEAGUES
 from .plots import plotLoss, plotAccuracy, plotResults, plotConfusionMatrix, plotClassConfidenceHistogram, plotReliabilityDiagram
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -18,11 +18,13 @@ random.seed(MANUALSEED)
 BATCHSIZE = 64
 LR = 0.0001 * (BATCHSIZE / 64)
 
+SEQLEN = 20
+
 EPOCHS = 20
 SAVEPOINT = 10
 
-TRIALDIR = SAVEDMODELSDIR + "/TRIAL_11_BIGGERDATA_73626_SHARDING"
-MODELNAME = "MODEL_RTU0709_TD0101_MVA01005_CFD01005_BS128_LS40_EMBD2_EABPD1_ENDB1_EAD03_EAH2_FEAD03_FEAH2"
+TRIALDIR = SAVEDMODELSDIR + "/TRIAL_11_SHARDING_STORE"
+MODELNAME = "MODEL_RTU0709_TD0101_MVA01005_CFD01005_BS128_SL20_LS40_EMBD2_EABPD1_ENDB1_EAD03_EAH2_FEAD03_FEAH2"
 RESULTSNAME = f"{MODELNAME}_RESULTS.pt"
 
 if __name__=="__main__":
@@ -33,7 +35,7 @@ if __name__=="__main__":
                         ContinuousFeatureDropout(prob=0.1, intensity=0.05)
     ])
 
-    dataloaders = prepareData(batchSize=BATCHSIZE, trainTransform=augmentation)
+    dataloaders = prepareData(batchSize=BATCHSIZE, trainTransform=augmentation, seqLen=SEQLEN)
     assert isinstance(dataloaders, dict), "dataloaders is not type dict"
     trainDataloader, valDataloader, testDataloader = dataloaders["train"], dataloaders["validation"], dataloaders["test"]
 
@@ -48,7 +50,7 @@ if __name__=="__main__":
     for k, v in batch.items():
         print(f"{k}, {v.shape}")
         # print(f"{v[0]}\n")
-    model = MatchPredictorV0(vocabSizes=vocabSize, outDim=3, seqLen=20,
+    model = MatchPredictorV0(vocabSizes=vocabSize, outDim=3, seqLen=SEQLEN,
                              embDim=2, numFeatures=60, latentSize=40,
                              encoderNumDownBlocks=2, encoderAttnBlocksPerDown=1,
                              featExtractorDepth=3, encoderAttnDropout=0.3, featExtractorAttnDropout=0.3,
@@ -62,7 +64,15 @@ if __name__=="__main__":
                             model=model,
                             optimizer=optimizer)
     model.to(device)
-    summary(model, input_size=[(64, 20, 60), (64, 20, 60), (64, 20), (64, 20), (64, 20, 49), (64, 20, 49)])
+    summary(model, 
+            input_size=[
+                (64, SEQLEN, 60),
+                (64, SEQLEN, 60),
+                (64, SEQLEN),
+                (64, SEQLEN),
+                (64, SEQLEN, 49),
+                (64, SEQLEN, 49)
+            ])
 
     lossFn = torch.nn.CrossEntropyLoss()
     
@@ -90,3 +100,9 @@ if __name__=="__main__":
     plotClassConfidenceHistogram(model=model, dataloader=testDataloader, title=f"{MODELNAME} (test) -")
     plotClassConfidenceHistogram(model=model, dataloader=trainDataloader, title=f"{MODELNAME} (train) -")
     plotReliabilityDiagram(model=model, dataloader=testDataloader, bins=20, title=f"{MODELNAME} (test) -")
+
+    bigFiveLoaders = prepareData(batchSize=BATCHSIZE, seqLen=SEQLEN, groups=BIGFIVELEAGUES)
+    plotConfusionMatrix(model=model, dataloader=bigFiveLoaders["test"], title=f"{MODELNAME} (test) -")
+    plotClassConfidenceHistogram(model=model, dataloader=bigFiveLoaders["test"], title=f"{MODELNAME} (test) -")
+    plotClassConfidenceHistogram(model=model, dataloader=bigFiveLoaders["train"], title=f"{MODELNAME} (train) -")
+    plotReliabilityDiagram(model=model, dataloader=bigFiveLoaders["test"], bins=20, title=f"{MODELNAME} (test) -")

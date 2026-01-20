@@ -12,7 +12,7 @@ class Transform:
     def connect(self, 
                 ds: Dataset):
         raise NotImplementedError("connect method for Transform must be implemented")
-    
+
 class Compose(Transform):
     def __init__(self, transforms: List[Transform]):
         self.transforms = transforms
@@ -126,7 +126,7 @@ class RandomTokenUNK(Transform):
         sample["home"] = xh
         sample["away"] = xa
         return sample
-    
+
 class TemporalDropout(Transform):
     def __init__(self,
                  prob: float=0.2, 
@@ -151,7 +151,7 @@ class TemporalDropout(Transform):
             sample[f"mask_{side}"][:drop] = 0
         
         return sample
-    
+
 class MissingValueAugment(Transform):
     def __init__(self,
                  prob: float=0.2,

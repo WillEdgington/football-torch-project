@@ -2,7 +2,6 @@ import torch
 
 from typing import Dict, List, Tuple, Any
 from torch.utils.data import Dataset
-from pathlib import Path
 
 from .transforms import Transform
 from .sample_store import SampleStore
@@ -19,7 +18,11 @@ class MatchDataset(Dataset):
         self._getMetaFromStore()
         assert seqLen <= self.maxSeqLen, f"seqLen ({seqLen}) must be less than or equal to maxSeqLen ({self.maxSeqLen})"
         self.seqLen = seqLen
-        self._startT = self.maxSeqLen - self.seqLen
+        self._seqSlice = slice(self.maxSeqLen - self.seqLen, self.maxSeqLen)
+        if self.missingCols:
+            assert store._sampleKeys == ("home", "away", "mask_home", "mask_away", "y", "missing_home", "missing_away")
+        else:
+            assert store._sampleKeys == ("home", "away", "mask_home", "mask_away", "y")
 
         self._getIndicesFromStore(split=split, group=group)
 
@@ -31,15 +34,20 @@ class MatchDataset(Dataset):
         return len(self.indices)
     
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        sample = self.store.get(self.indices[idx])
+        if self.missingCols is not None:
+            home, away, maskHome, maskAway, y, missingHome, missingAway = \
+                self.store.getTuple(self.indices[idx]) 
+        else:
+            home, away, maskHome, maskAway, y, missingHome, missingAway = self.store.getTuple(self.indices[idx]), None, None
+
         sample = {
-            "home": sample["home"][self._startT:],
-            "away": sample["away"][self._startT:],
-            "mask_home": sample["mask_home"][self._startT:],
-            "mask_away": sample["mask_away"][self._startT:],
-            "missing_home": sample["missing_home"][self._startT:] if self.missingCols is not None else None,
-            "missing_away": sample["missing_away"][self._startT:] if self.missingCols is not None else None,
-            "y": sample["y"],
+            "home": home[self._seqSlice],
+            "away": away[self._seqSlice],
+            "mask_home": maskHome[self._seqSlice],
+            "mask_away": maskAway[self._seqSlice],
+            "missing_home": missingHome[self._seqSlice] if self.missingCols is not None else None,
+            "missing_away": missingAway[self._seqSlice] if self.missingCols is not None else None,
+            "y": y,
         }
 
         if self.transform is not None:
