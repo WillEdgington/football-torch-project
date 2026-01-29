@@ -6,7 +6,7 @@ from tensor_pipeline import prepareData, RandomTokenUNK, TemporalDropout, Missin
 
 from .models import MatchPredictorV0
 from .train import train
-from .save import saveStates, saveTorchObject, loadResultsMap, loadStates
+from utils.save import saveStates, saveTorchObject, loadResultsMap, loadStates
 from .config import SAVEDMODELSDIR, BIGFIVELEAGUES
 from .plots import plotLoss, plotAccuracy, plotResults, plotConfusionMatrix, plotClassConfidenceHistogram, plotReliabilityDiagram
 
@@ -15,16 +15,20 @@ MANUALSEED = 42
 torch.manual_seed(seed=MANUALSEED)
 random.seed(MANUALSEED)
 
-BATCHSIZE = 64
+BATCHSIZE = 128
 LR = 0.0001 * (BATCHSIZE / 64)
 
-SEQLEN = 20
+SEQLEN = 50
+LATENTSIZE = 20
+EMBDIM = 1
+ENCODERDEPTH = 2
+FEATEXTDEPTH = 2
 
 EPOCHS = 20
 SAVEPOINT = 10
 
 TRIALDIR = SAVEDMODELSDIR + "/TRIAL_11_SHARDING_STORE"
-MODELNAME = "MODEL_RTU0709_TD0101_MVA01005_CFD01005_BS128_SL20_LS40_EMBD2_EABPD1_ENDB1_EAD03_EAH2_FEAD03_FEAH2"
+MODELNAME = f"MODEL_RTU0709_TD0101_MVA01005_CFD01005_BS{BATCHSIZE}_SL{SEQLEN}_LS{LATENTSIZE}_EMBD{EMBDIM}_EABPD1_ENDB{ENCODERDEPTH}_EAD03_EAH2_FED{FEATEXTDEPTH}_FEAD03_FEAH2"
 RESULTSNAME = f"{MODELNAME}_RESULTS.pt"
 
 if __name__=="__main__":
@@ -51,9 +55,9 @@ if __name__=="__main__":
         print(f"{k}, {v.shape}")
         # print(f"{v[0]}\n")
     model = MatchPredictorV0(vocabSizes=vocabSize, outDim=3, seqLen=SEQLEN,
-                             embDim=2, numFeatures=60, latentSize=40,
-                             encoderNumDownBlocks=2, encoderAttnBlocksPerDown=1,
-                             featExtractorDepth=3, encoderAttnDropout=0.3, featExtractorAttnDropout=0.3,
+                             embDim=EMBDIM, numFeatures=60, latentSize=LATENTSIZE,
+                             encoderNumDownBlocks=ENCODERDEPTH, encoderAttnBlocksPerDown=1,
+                             featExtractorDepth=FEATEXTDEPTH, encoderAttnDropout=0.3, featExtractorAttnDropout=0.3,
                              encoderNumAttnHeads=2, featExtractorNumAttnHeads=2)
     model.to(device)
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=LR, weight_decay=0.0001)
