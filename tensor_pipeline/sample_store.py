@@ -196,7 +196,7 @@ class SampleStore:
 
         self._resumeActiveShard()
     
-    def state_dict(self):
+    def state_dict(self) -> Dict[str, Any]:
         return {
             "shard_size": self.shardSize,
             "num_samples": self.numSamples,

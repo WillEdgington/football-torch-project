@@ -255,7 +255,7 @@ class FeatureExtractor(nn.Module):
         return x
 
 class MatchPredictorV0(nn.Module):
-    def __init__(self, vocabSizes: Dict[int, int], outDim: int, seqLen: int=20, 
+    def __init__(self, vocabSizes: Dict[int, int], outDim: int=3, seqLen: int=20, 
                  numFeatures: int=60, latentSize: int=10, embDim: int=2, acceptMissing: bool=True,
                  encoderNumDownBlocks: int=1, encoderAttnBlocksPerDown: int=1, encoderNumAttnHeads: int=1,
                  encoderAttnDropout: float=0.0, encoderResAttn: bool=True, encoderConvBlocksPerDown: int=1,
@@ -280,7 +280,7 @@ class MatchPredictorV0(nn.Module):
                                         useFFN=featExtractorUseFFN, resFFN=featExtractorResFFN, expansionFFN=featExtractorExpansionFFN,
                                         lnormFFN=featExtractorLnormFFN, activationFFN=featExtractorActivationFFN)
         
-        self.mlp = MLP(channels=seqLen*2, numFeatures=latentSize, outDim=outDim)
+        self.mlp = MLP(channels=seqLen*2, numFeatures=latentSize, outDim=outDim, activation=activationMLP)
 
     def forward(self, 
                 xh: torch.Tensor, 

@@ -59,7 +59,7 @@ if __name__=="__main__":
                              encoderNumDownBlocks=ENCODERDEPTH, encoderAttnBlocksPerDown=1,
                              featExtractorDepth=FEATEXTDEPTH, encoderAttnDropout=0.3, featExtractorAttnDropout=0.3,
                              encoderNumAttnHeads=2, featExtractorNumAttnHeads=2)
-    model.to(device)
+    model = model.to(device)
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=LR, weight_decay=0.0001)
 
     if epochsComplete > 0:
@@ -67,7 +67,7 @@ if __name__=="__main__":
                             stateDir=TRIALDIR,
                             model=model,
                             optimizer=optimizer)
-    model.to(device)
+    model = model.to(device)
     summary(model, 
             input_size=[
                 (64, SEQLEN, 60),

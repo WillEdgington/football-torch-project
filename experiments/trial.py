@@ -7,19 +7,21 @@ from typing import Dict, Any
 from .config import EXPERIMENTDIR
 
 class Trial:
-    def __init__(self, path: Path):
+    def __init__(self,
+                 path: Path):
         self.path = path
+        self.modelPath = path / "models"
+        self.modelPath.mkdir(parents=True, exist_ok=False)
+
         self.definitionPath = path / "definition.json"
         self.statePath = path / "state.json"
         self.metricsPath = path / "metrics.pt"
 
-        self.definition: Dict[str, Any]|None = None
-        self.state: Dict[str, Any]|None = None
+        self._definition: Dict[str, Any]|None = None
+        self._state: Dict[str, Any]|None = None
 
     def isComplete(self) -> bool:
-        if self.state is None:
-            self.loadState()
-        return self.state["status"] == "completed"
+        return self.getState()["status"] == "completed"
 
     @classmethod
     def create(self,
@@ -37,7 +39,7 @@ class Trial:
         
         state = {
             "status": "created",
-            "current_epoch": 0,
+            "epochs_completed": 0,
             "max_epoch": definition.get("training", {}).get("epochs"),
             "created_at": createTime,
             "updated_at": createTime
@@ -47,8 +49,8 @@ class Trial:
             json.dump(state, f, indent=2)
 
         trial = self(path=path)
-        trial.definition = definition
-        trial.state = state        
+        trial._definition = definition
+        trial._state = state        
         return trial
 
     @classmethod
@@ -59,19 +61,29 @@ class Trial:
         
         trial = self(path=path)
 
-        with open(trial.definitionPath) as f:
-            trial.definition = json.load(f)
-        
-        trial.loadState()
+        trial.getDefinition()        
+        trial.getState()
         return trial
     
-    def loadState(self):
-        with open(self.statePath) as f:
-            self.state = json.load(f)
+    def getState(self) -> Dict[str, Any]:
+        if self._state is None:
+            if not self.statePath.exists():
+                raise FileNotFoundError(f"Missing state in path: {self.statePath}")
+            with open(self.statePath) as f:
+                self._state = json.load(f)
+        return self._state
     
+    def getDefinition(self) -> Dict[str, Any]:
+        if self._definition is None:
+            if not self.definitionPath.exists():
+                raise FileNotFoundError(f"Missing definition in path: {self.definitionPath}")
+            with open(self.definitionPath) as f:
+                self.definition = json.load(f)
+        return self._definition
+
     def saveState(self):
-        if self.state is None:
+        if self._state is None:
             raise RuntimeError("Trial state not loaded")
-        self.state["updated_at"] = time.time()
+        self._state["updated_at"] = time.time()
         with open(self.statePath, "w") as f:
-            json.dump(self.state, f, indent=2)
+            json.dump(self._state, f, indent=2)

@@ -56,7 +56,7 @@ def loadStates(stateName: str, stateDir: str=SAVEDMODELSDIR, **kwargs):
         return None
     
     for k, v in kwargs.items():
-        if k not in state.keys():
+        if k not in state.keys() or v is None:
             continue
         v.load_state_dict(state[k])
     
