@@ -67,7 +67,7 @@ if __name__=="__main__":
                             stateDir=TRIALDIR,
                             model=model,
                             optimizer=optimizer)
-    model = model.to(device)
+    model.to(device)
     summary(model, 
             input_size=[
                 (64, SEQLEN, 60),

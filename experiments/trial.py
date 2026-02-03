@@ -18,7 +18,7 @@ class Trial:
         self.metricsPath = path / "metrics.pt"
 
         self._definition: Dict[str, Any]|None = None
-        self._state: Dict[str, Any]|None = None
+        self.state: Dict[str, Any]|None = None
 
     def isComplete(self) -> bool:
         return self.getState()["status"] == "completed"
@@ -40,7 +40,7 @@ class Trial:
         state = {
             "status": "created",
             "epochs_completed": 0,
-            "max_epoch": definition.get("training", {}).get("epochs"),
+            "max_epoch": definition.get("train", {}).get("epochs"),
             "created_at": createTime,
             "updated_at": createTime
         }
@@ -50,7 +50,7 @@ class Trial:
 
         trial = self(path=path)
         trial._definition = definition
-        trial._state = state        
+        trial.state = state        
         return trial
 
     @classmethod
@@ -66,12 +66,12 @@ class Trial:
         return trial
     
     def getState(self) -> Dict[str, Any]:
-        if self._state is None:
+        if self.state is None:
             if not self.statePath.exists():
                 raise FileNotFoundError(f"Missing state in path: {self.statePath}")
             with open(self.statePath) as f:
-                self._state = json.load(f)
-        return self._state
+                self.state = json.load(f)
+        return self.state
     
     def getDefinition(self) -> Dict[str, Any]:
         if self._definition is None:
@@ -82,8 +82,8 @@ class Trial:
         return self._definition
 
     def saveState(self):
-        if self._state is None:
-            raise RuntimeError("Trial state not loaded")
-        self._state["updated_at"] = time.time()
+        if self.state is None:
+            raise RuntimeError("Trial state not loaded, load state before saving")
+        self.state["updated_at"] = time.time()
         with open(self.statePath, "w") as f:
-            json.dump(self._state, f, indent=2)
+            json.dump(self.state, f, indent=2)
