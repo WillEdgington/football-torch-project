@@ -4,8 +4,6 @@ import time
 from pathlib import Path
 from typing import Dict, Any
 
-from .config import EXPERIMENTDIR
-
 class Trial:
     def __init__(self,
                  path: Path):
@@ -26,7 +24,7 @@ class Trial:
     @classmethod
     def create(self,
                definition: Dict[str, Any],
-               root: Path|str=EXPERIMENTDIR) -> "Trial":
+               root: Path|str="saved_models") -> "Trial":
         if not isinstance(root, Path):
             root = Path(root)
         createTime = time.time()
@@ -78,7 +76,7 @@ class Trial:
             if not self.definitionPath.exists():
                 raise FileNotFoundError(f"Missing definition in path: {self.definitionPath}")
             with open(self.definitionPath) as f:
-                self.definition = json.load(f)
+                self._definition = json.load(f)
         return self._definition
 
     def saveState(self):
