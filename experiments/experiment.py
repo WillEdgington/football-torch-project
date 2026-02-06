@@ -3,24 +3,27 @@ import json
 
 from pathlib import Path
 
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Set
 
 from .trial_scheduler import TrialScheduler
 from .config import TrainFn, ConstructorFn, EvaluatorFn
 from .trial import Trial
 from .trainer import Trainer
 
-def hash_definition(definition: Dict[str, Any]) -> str:
+def hashDefinition(definition: Dict[str, Any]) -> str:
     blob = json.dumps(definition, sort_keys=True).encode()
     return hashlib.sha256(blob).hexdigest()
 
 class Experiment:
     def __init__(self,
-                 root: Path,
+                 root: Path|str,
                  scheduler: TrialScheduler,
                  train: TrainFn,
                  constructer: ConstructorFn,
                  evaluator: EvaluatorFn|None=None):
+        if not isinstance(root, Path):
+            root = Path(root)
+            
         self.root = root
         self._trialsDir: Path = root / "trials"
         self._trialsDir.mkdir(parents=True, exist_ok=True)
@@ -32,6 +35,7 @@ class Experiment:
 
         self._trialsJSON: Path = self.root / "trials.json"
         self.trials: List[Dict[str, Any]] = self._loadTrials()
+        self._definitionHashes: Set[str] = self._loadDefinitionHashes()
 
     def _loadTrials(self) -> List[Dict[str, Any]]:
         if not self._trialsJSON.exists():
@@ -45,9 +49,24 @@ class Experiment:
     def _saveTrials(self):
         with open(self._trialsJSON, "w") as f:
             json.dump(self.trials, f, indent=2)
+
+    def _loadDefinitionHashes(self):
+        defHashes = set()
+        for t in self.trials:
+            defHashes.add(t["definition_hash"])
+        return defHashes
     
+    def _createNewDefinition(self) -> Tuple[Dict[str, Any], str]|Tuple[None, None]:
+        while True:
+            definition = self.scheduler.next()
+            if definition is None:
+                return None, None
+            defHash = hashDefinition(definition=definition)
+            if defHash not in self._definitionHashes:
+                return definition, defHash
+
     def _createNextTrial(self) -> Tuple[Trial, int]|Tuple[None, None]:
-        definition = self.scheduler.next()
+        definition, defHash = self._createNewDefinition()
         if definition is None:
             return None, None
         
@@ -56,11 +75,12 @@ class Experiment:
         trialState = {
             "id": idx,
             "path": str(trial.path),
-            "definition_hash": hash(trial.getDefinition()),
+            "definition_hash": defHash,
             "evals": {}
         }
         self.trials.append(trialState)
         self._saveTrials()
+        self._definitionHashes.add(defHash)
         return trial, idx
 
     def _prepareTrial(self) -> Tuple[Trial, int]|Tuple[None, None]:

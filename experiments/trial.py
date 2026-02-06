@@ -9,7 +9,7 @@ class Trial:
                  path: Path):
         self.path = path
         self.modelPath = path / "models"
-        self.modelPath.mkdir(parents=True, exist_ok=False)
+        self.modelPath.mkdir(parents=True, exist_ok=True)
 
         self.definitionPath = path / "definition.json"
         self.statePath = path / "state.json"
