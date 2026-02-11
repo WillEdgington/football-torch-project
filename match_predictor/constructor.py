@@ -150,7 +150,7 @@ def prepareMatchPredictorState(definition: Dict[str, Any],
     
     epochsCompleted = state["epochs_completed"]
     if epochsCompleted > 0:
-        loadStates(statename=f"MODEL_{epochsCompleted}_EPOCHS.pt",
+        loadStates(stateName=f"MODEL_{epochsCompleted}_EPOCHS.pt",
                    stateDir=modelDir,
                    model=model,
                    optimizer=optimizer)
