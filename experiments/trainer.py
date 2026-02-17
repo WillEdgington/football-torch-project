@@ -1,20 +1,10 @@
 import torch
 
-from typing import Dict, Any, List, Callable
+from typing import Dict, Any, List
 
 from .trial import Trial
+from .config import TrainFn, ConstructorFn
 from utils.save import saveStates
-
-TrainFn = Callable[..., Dict[str, List[float]]]
-ConstructorFn = Callable[
-    [Trial], 
-    Dict[
-        str,
-        torch.nn.Module|
-        torch.optim.Optimizer|
-        Dict[str,torch.utils.data.DataLoader]
-    ]
-]
 
 class Trainer:
     def __init__(self,
@@ -26,7 +16,7 @@ class Trainer:
         else:
             self.trial = trial
 
-        self.train: function = train
+        self.train: TrainFn = train
         self.metrics: Dict[str, List[float]]|None = None
         self._loadTrainingParams()
         self._loadMetrics()

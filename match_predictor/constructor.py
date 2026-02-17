@@ -161,7 +161,8 @@ def prepareMatchPredictorState(definition: Dict[str, Any],
         "optimizer": optimizer
     }
 
-def constructMatchPredictorTrial(trial: Trial) -> Dict[str, 
+def constructMatchPredictorTrial(trial: Trial,
+                                 train: bool=True) -> Dict[str, 
                                                        torch.nn.Module|
                                                        torch.optim.Optimizer|
                                                        Dict[str,torch.utils.data.DataLoader]]:

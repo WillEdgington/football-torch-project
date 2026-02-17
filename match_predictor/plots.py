@@ -53,7 +53,7 @@ def plotConfusionMatrix(model: torch.nn.Module,
                         normalise: bool=True,
                         title: str="",
                         device: torch.device="cuda" if torch.cuda.is_available() else "cpu"):
-    preds, targets, _ = evaluateClassificationModel(model=model, 
+    preds, targets, _, _ = evaluateClassificationModel(model=model, 
                                                  dataloader=dataloader,
                                                  getProbs=False,
                                                  device=device)
@@ -101,7 +101,7 @@ def plotClassConfidenceHistogram(model: torch.nn.Module,
                                  bins: int=20,
                                  title: str="",
                                  device: torch.device="cuda" if torch.cuda.is_available() else "cpu"):
-    _, targets, probs = evaluateClassificationModel(model=model,
+    _, targets, probs, _ = evaluateClassificationModel(model=model,
                                                     dataloader=dataloader,
                                                     getProbs=True,
                                                     device=device)
@@ -161,7 +161,7 @@ def plotReliabilityDiagram(model: torch.nn.Module,
                            bins: int=20,
                            title: str="",
                            device: torch.device="cuda" if torch.cuda.is_available() else "cpu"):
-    preds, targets, probs = evaluateClassificationModel(model=model,
+    preds, targets, probs, _ = evaluateClassificationModel(model=model,
                                                         dataloader=dataloader,
                                                         getProbs=True,
                                                         device=device)

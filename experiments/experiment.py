@@ -1,5 +1,7 @@
 import hashlib
 import json
+import torch
+import numpy as np
 
 from pathlib import Path
 
@@ -9,6 +11,23 @@ from .trial_scheduler import TrialScheduler
 from .config import TrainFn, ConstructorFn, EvaluatorFn
 from .trial import Trial
 from .trainer import Trainer
+from .evaluator import Evaluator
+
+def toJSONSafe(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {k: toJSONSafe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [toJSONSafe(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return [toJSONSafe(v) for v in obj]
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, torch.Tensor):
+        return obj.detach().cpu().tolist()
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    else:
+        return obj
 
 def hashDefinition(definition: Dict[str, Any]) -> str:
     blob = json.dumps(definition, sort_keys=True).encode()
@@ -20,7 +39,7 @@ class Experiment:
                  scheduler: TrialScheduler,
                  train: TrainFn,
                  constructer: ConstructorFn,
-                 evaluator: EvaluatorFn|None=None):
+                 evaluator: Evaluator|None=None):
         if not isinstance(root, Path):
             root = Path(root)
             
@@ -31,7 +50,9 @@ class Experiment:
         self.scheduler = scheduler
         self.train = train
         self.constructor = constructer
+
         self.evaluator = evaluator
+        self.evalHash = hashDefinition(self.evaluator.evalDefinition)
 
         self._trialsJSON: Path = self.root / "trials.json"
         self.trials: List[Dict[str, Any]] = self._loadTrials()
@@ -47,6 +68,7 @@ class Experiment:
         return trials
 
     def _saveTrials(self):
+        json.dumps(self.trials)
         with open(self._trialsJSON, "w") as f:
             json.dump(self.trials, f, indent=2)
 
@@ -94,7 +116,8 @@ class Experiment:
                   trial: Trial) -> Dict[str, Any]|None:
         if self.evaluator is None:
             return None
-        evals = self.evaluator(trial)
+        evals = self.evaluator.run(trial)
+        evals["eval_hash"] = self.evalHash
         return evals
         
     def eval(self, 
@@ -102,12 +125,14 @@ class Experiment:
              save: bool=True):
         evalList = []
         for i, t in enumerate(self.trials):
-            if not overwrite and len(t["evals"].keys()) > 0:
+            if not overwrite and t.get("evals"):
                 evalList.append(t["evals"])
                 continue
             trial = Trial.load(path=Path(t["path"]))
+            if not trial.isComplete():
+                continue
             trialEvals = self.evalTrial(trial=trial)
-            self.trials[i]["evals"] = trialEvals
+            self.trials[i]["evals"] = toJSONSafe(trialEvals)
             evalList.append(trialEvals)
             if save:
                 self._saveTrials()
@@ -123,7 +148,7 @@ class Experiment:
                               train=self.train,
                               constructor=self.constructor)
             trainer.run()
-            self.trials[i]["evals"] = self.evalTrial(trial=trial)
+            self.trials[i]["evals"] = toJSONSafe(self.evalTrial(trial=trial))
             self._saveTrials()
 
         print(f"All trials complete.\nTotal trials: {len(self.trials)}")

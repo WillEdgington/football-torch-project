@@ -8,7 +8,7 @@ EXPERIMENTDIR = "saved_models"
 
 TrainFn = Callable[..., Dict[str, List[float]]]
 ConstructorFn = Callable[
-    [Trial], 
+    [Trial, bool], 
     Dict[
         str,
         torch.nn.Module|
@@ -16,4 +16,4 @@ ConstructorFn = Callable[
         Dict[str,torch.utils.data.DataLoader]
     ]
 ]
-EvaluatorFn = Callable[[Trial], Dict[str, Any]]
+EvaluatorFn = Callable[..., Dict[str, Any]]

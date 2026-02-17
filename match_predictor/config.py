@@ -92,9 +92,22 @@ SWEEP = {
     ("model", "featExtractorExpansionFFN"): ["default", 4],
     ("model", "featExtractorActivationFFN"): ["default", "LeakyReLU"],
     ("model", "activationMLP"): ["default", "LeakyReLU"],
-    ("optimizer", "lr"): ["default", 1e-5],
+    ("optimizer", "lr"): ["default"],
     ("data", "batchSize"): ["default", 16, 64, 128],
     ("data", "seqLen"): ["default", 10, 30, 40, 50],
     ("lossFn", "label_smoothing"): ["default", 0.1, 0.2],
     ("data", "transform"): ["default", None],
+}
+
+EVALDEFINITIONBIG5 = {
+    "data": {
+        "prefix_label": "BIG5_",
+        "transform": None,
+        "batchSize": 64,
+        "groups": BIGFIVELEAGUES,
+    },
+    "lossFn": {
+        "lossFn": "CrossEntropyLoss",
+        "label_smoothing": 0.0
+    }
 }
