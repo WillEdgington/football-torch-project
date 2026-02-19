@@ -16,5 +16,5 @@ if __name__=="__main__":
                             train=train,
                             constructer=constructMatchPredictorTrial,
                             evaluator=evaluator) # evaluator needs implementing
-    # experiment.eval(overwrite=True)
+    experiment.eval()
     experiment.run()

@@ -101,7 +101,6 @@ SWEEP = {
 
 EVALDEFINITIONBIG5 = {
     "data": {
-        "prefix_label": "BIG5_",
         "transform": None,
         "batchSize": 64,
         "groups": BIGFIVELEAGUES,

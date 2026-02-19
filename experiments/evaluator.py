@@ -1,7 +1,10 @@
+import json
 import torch
 
+from pathlib import Path
 from typing import Dict, Any
 
+from utils.format import toJSONSafe, hashDefinition
 from .trial import Trial
 from .config import EvaluatorFn, ConstructorFn
 
@@ -23,18 +26,39 @@ class Evaluator:
         self.constructor = constructor
         self.evalDefinition = evalDefinition
         self.eval = eval
-        self.prefix = self.evalDefinition.get("data", {}).get("prefix_label", "")
+        self.evalHash = hashDefinition(self.evalDefinition)
 
     def run(self,
             trial: Trial) -> Dict[str, Any]:
         loaded = self._loadTrial(trial)
         evals = {}
         for key, dataloader in loaded["dataloaders"].items():
-            evals[f"{self.prefix}{key}"] = self.eval(model=loaded["model"],
-                                                     dataloader=dataloader,
-                                                     device=self.device)
+            evals[f"{key}"] = self.eval(model=loaded["model"],
+                                        dataloader=dataloader,
+                                        device=self.device)
         trial._definition = None
-        return evals
+        return self.save(trial, evals)
+    
+    def save(self,
+             trial: Trial,
+             results: Dict[str, Any]) -> str:
+        evalPath = Path(trial.evalsPath) / f"eval_{self.evalHash}.json"
+
+        if evalPath.exists():
+            return self.evalHash
+        
+        store = {
+            "eval_hash": self.evalHash,
+            "eval_definition": self.evalDefinition,
+            "results": toJSONSafe(results)
+        }
+
+        tmpPath = evalPath.with_suffix(".tmp")
+        with open(tmpPath, "w") as f:
+            json.dump(store, f, indent=2)
+        tmpPath.replace(evalPath)
+        
+        return self.evalHash
     
     def _adaptDefinition(self,
                          trial: Trial) -> Trial:

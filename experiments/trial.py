@@ -11,6 +11,9 @@ class Trial:
         self.modelPath = path / "models"
         self.modelPath.mkdir(parents=True, exist_ok=True)
 
+        self.evalsPath = path / "evals"
+        self.evalsPath.mkdir(parents=True, exist_ok=True)
+
         self.definitionPath = path / "definition.json"
         self.statePath = path / "state.json"
         self.metricsPath = path / "metrics.pt"
