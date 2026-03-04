@@ -1,4 +1,4 @@
-from experiments import GridTrialScheduler, Experiment, Evaluator
+from experiments import GridTrialScheduler, Experiment, ExperimentResults, Evaluator
 
 from .train import train
 from .constructor import constructMatchPredictorTrial
@@ -17,4 +17,7 @@ if __name__=="__main__":
                             constructer=constructMatchPredictorTrial,
                             evaluator=evaluator)
     experiment.eval()
-    experiment.run()
+
+    results = ExperimentResults(root=SAVEDMODELSDIR)
+    resultsDf = results.toDataFrame(evalHash=evaluator.evalHash)
+    print(resultsDf[resultsDf["test.ece"] <= 0.05].sort_values(by="test.ece").head(20))
