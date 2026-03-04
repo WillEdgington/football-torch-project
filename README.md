@@ -67,10 +67,25 @@ Input support includes:
 - Temporal masks
 - Missing-value indicator tensors
 
-> **Planned extension**: Trial tracking and experiment logging.
-This may later be factored into a shared module if reused by reinforcement learning components.
+### Experiment tracking (``experiments/``)
+
+A filesystem-backed **experiment management library** for **automated trial scheduling**, **training**, **evaluation**, and **results analysis**
+
+- **`Trial`** - tracks the full lifecycle of a single training run (definition, state, checkpoints, evaluations)
+- **`Trainer`** - orchestrates the training loop with periodic checkpointing and resume support
+- **`Evaluator`** - runs evaluation across dataloaders and persists results, keyed by a  hash of the eval definition for reproducibility
+- **`TrialScheduler`** - schedules trial definition for new trial
+- **`Experiment`** - coordinates the full pipeline: scheduling, training, evaluation, and deduplication of completed trials
+- **`ExperimentResults`** - loads trial evaluations and presents them as a `pandas` DataFrame for analysis
 
 ## Planned / Future Components
+
+### Improved match predictor (planned)
+
+- **Pretraining** on auxiliary self-supervised objectives (e.g. VAE-based representation learning) to improve encoder quality before supervised fine-tuning
+- **Fine-tuning** of pretrained components on the match outcome task
+- **Training parameter scheduling** - learning rate schedules, warmup, and other optimiser strategies integrated into the experiment framework
+- **Advanced trial scheduling** - Bayesian optimisation and other adaptive methods beyond grid search
 
 ### Reinforcement Value Learning (planned)
 - Learning value functions from historical odds data
@@ -89,13 +104,14 @@ This layer acts as a **model interpreter and decision optimizer**, rather than a
 This section serves as a **living development log**.
 
 ### Current Focus
-- Designing and implementing trial tracking for model training
-  - Hyperparameters
-  - Dataset configuration
-  - Model checkpoints
-  - Evaluation metrics
+- Experiment visualisations: plots and analysis of completed hyperparameter sweep results
 
 ### Recently Completed
+- Experiment tracking library (`experiments/`)
+  - Trial lifecycle management with resume support
+  - Grid search scheduler with definition deduplication
+  - Evaluation storage keyed by eval definition hash
+  - `ExperimentResults.toDataFrame` for structured results analysis
 - Sharded tensor storage system (``SampleStore``)
 - Flexible dataset slicing and grouping
 - Custom temporal and feature-level augmentations
@@ -103,8 +119,8 @@ This section serves as a **living development log**.
 - Baseline predictive model training on ~76k samples
 
 ### Known Limitations
-- Scraper blocked by Cloudflare verification
-- No browser automation fallback implemented
+- Scraper blocked by Cloudflare verification; No browser automation fallback implemented
+- Trial scheduler limited to grid search; no adaptive scheduling yet
 - Reinforcement learning components not yet integrated
 
 ## Disclaimer
@@ -116,6 +132,6 @@ It is not intended for real-world gambling or commercial betting use.
 
 Created by [**WillEdgington**](https://github.com/WillEdgington)
 
-📧 **willedge037@gmail.com**
+📧 [**willedge037@gmail.com**](mailto:willedge037@gmail.com)
 
 🔗 [**LinkedIn**](https://www.linkedin.com/in/williamedgington/)
