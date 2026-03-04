@@ -25,7 +25,7 @@ class Trial:
         return self.getState()["status"] == "completed"
 
     @classmethod
-    def create(self,
+    def create(cls,
                definition: Dict[str, Any],
                root: Path|str="saved_models") -> "Trial":
         if not isinstance(root, Path):
@@ -49,19 +49,20 @@ class Trial:
         with open(path / "state.json", "w") as f:
             json.dump(state, f, indent=2)
 
-        trial = self(path=path)
+        trial = cls(path=path)
         trial._definition = definition
         trial.state = state        
         return trial
 
     @classmethod
-    def load(self, 
+    def load(cls, 
              path: Path) -> "Trial":
         if not (path / "definition.json").exists():
-            raise FileNotFoundError("Missing definition.json")
+            raise FileNotFoundError(f"Missing definition.json at: {path}")
+        if not (path / "state.json").exists():
+            raise FileNotFoundError(f"Missing state.json at: {path}")
         
-        trial = self(path=path)
-
+        trial = cls(path=path)
         trial.getDefinition()        
         trial.getState()
         return trial

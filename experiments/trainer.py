@@ -6,6 +6,13 @@ from .trial import Trial
 from .config import TrainFn, ConstructorFn
 from utils.save import saveStates
 
+def _parseBool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() == "true"
+    return bool(value)
+
 class Trainer:
     def __init__(self,
                  trial: Trial,
@@ -46,8 +53,8 @@ class Trainer:
                                       epochs=epochs,
                                       seed=self.seed,
                                       results=self.metrics,
-                                      calcAccuracy=self.trainParams.get("calcAccuracy", "true")=="true",
-                                      enableAmp=self.trainParams.get("enableAmp", "true")=="true",
+                                      calcAccuracy=_parseBool(self.trainParams.get("calcAccuracy", True)),
+                                      enableAmp=_parseBool(self.trainParams.get("enableAmp", True)),
                                       gradClipping=self.trainParams.get("gradClipping", None),
                                       device=self.device)
             self.epochsCompleted += epochs

@@ -1,6 +1,7 @@
 import json
 import torch
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, Any
 
@@ -62,7 +63,7 @@ class Evaluator:
     
     def _adaptDefinition(self,
                          trial: Trial) -> Trial:
-        trial._definition = adaptDict(original=trial.getDefinition().copy(),
+        trial._definition = adaptDict(original=deepcopy(trial.getDefinition()),
                                       new=self.evalDefinition)
         return trial
     
@@ -71,5 +72,5 @@ class Evaluator:
         trial = self._adaptDefinition(trial)
         loaded = self.constructor(trial)
         self.device = trial._definition.get("device", 
-                                            "cuda" if torch.cuda.is_available else "cpu")
+                                            "cuda" if torch.cuda.is_available() else "cpu")
         return loaded
