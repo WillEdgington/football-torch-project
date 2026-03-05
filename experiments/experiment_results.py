@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Sequence
 from pathlib import Path
 
 from .trial import Trial
+from .trial_result import TrialResult
 
 def _flatten(dic: Dict[str, Any], 
              parentKey: str="", 
@@ -48,6 +49,13 @@ class ExperimentResults:
             return None
         with open(evalPath) as f:
             return json.load(f)
+        
+    def getTrial(self,
+                 trial_id: int) -> TrialResult:
+        matches = [t for t in self.trials if t["id"] == trial_id]
+        if not matches:
+            raise KeyError(f"Trial ID {trial_id} not found")
+        return TrialResult(Trial.load(Path(matches[0]["path"])))
 
     def toDataFrame(self,
                     evalHash: str,
