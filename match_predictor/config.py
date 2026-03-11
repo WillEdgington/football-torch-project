@@ -80,6 +80,7 @@ BASEDEFINITION = {
     "seed": 42,
 }
 
+# 2.8 million possibilities, should probably shorten it down
 SWEEP = {
     ("model", "latentSize"): ["default", 10, 40],
     ("model", "embDim"): ["default", 2, 3],
