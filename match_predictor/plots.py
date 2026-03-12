@@ -1,9 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
-from typing import List, Tuple
+from typing import List, Tuple, Literal
 
-from experiments import TrialResult
+from experiments import TrialResult, ExperimentResults
 
 def _resolveSplits(trialResult: TrialResult,
                    evalHash: str,
@@ -176,6 +177,99 @@ def plotReliabilityDiagram(trialResult: TrialResult,
         ax.axis("off")
     
     fig.suptitle(f"Reliability Diagram - {trialResult._trial.path.name}" + f" (trial ID: {trialID})" if trialID else "")
+    plt.tight_layout()
+    if show:
+        plt.show()
+
+def plotExperimentMetricScatter(xlabel: str,
+                                ylabel: str,
+                                experimentResults: ExperimentResults|None=None,
+                                evalHash: str|None=None,
+                                df: pd.DataFrame|None=None,
+                                mode: Literal["scatter", "errorbar", "scatter+fit", "errorbar+fit"]="scatter",
+                                show: bool=True):
+    if df is None and (experimentResults is None or evalHash is None):
+        raise ValueError("You must input a DataFrame (df) or an ExperimentResults object (experimentResults) and evaluator hash (evalHash)")
+    
+    if df is None:
+        df = experimentResults.toDataFrame(evalHash=evalHash)
+    if xlabel not in df.columns:
+        raise ValueError(f"Column '{xlabel}' not in DataFrame")
+    if ylabel not in df.columns:
+        raise ValueError(f"Column '{ylabel}' not in DataFrame")
+    
+    fig, ax = plt.subplots(figsize=(7, 5))
+    x = df[xlabel]
+    y = df[ylabel]
+
+    if mode.startswith("scatter"):
+        ax.scatter(df[xlabel], df[ylabel], alpha=0.7)
+        for trial_id, row in df.iterrows():
+            ax.annotate(str(trial_id), 
+                        (row[xlabel], row[ylabel]),
+                        textcoords="offset points",
+                        xytext=(4, 4),
+                        fontsize=7)
+    elif mode.startswith("errorbar"):
+        grouped = df.groupby(xlabel)[ylabel]
+        means = grouped.mean()
+        stds = grouped.std().fillna(0)
+        ax.errorbar(means.index, 
+                    means.values, 
+                    yerr=stds.values,
+                    fmt="o",
+                    capsize=4,
+                    color="steelblue")
+    if mode.endswith("+fit"):
+        coeffs = np.polyfit(x, y, 1)
+        xLine = np.linspace(x.min(), x.max(), 200)
+        ax.plot(xLine,
+                np.polyval(coeffs, xLine),
+                color="tomato",
+                linewidth=1.5,
+                label=f"fit: f(x)={coeffs[0]:.5f}x + {coeffs[1]:.3f}")
+        ax.legend()
+    
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"{ylabel} vs {xlabel}")
+    ax.grid(alpha=0.3)
+    plt.tight_layout()
+    if show:
+        plt.show()
+
+def plotExperimentMetricBar(metric: str,
+                            experimentResults: ExperimentResults|None=None,
+                            evalHash: str|None=None,
+                            df: pd.DataFrame|None=None,
+                            ascending: bool=False,
+                            topN: int|None=None,
+                            show: bool=True):
+    if df is None and (experimentResults is None or evalHash is None):
+        raise ValueError("You must input a DataFrame (df) or an ExperimentResults object (experimentResults) and evaluator hash (evalHash)")
+    
+    if df is None:
+        df = experimentResults.toDataFrame(evalHash=evalHash)
+    if metric not in df.columns:
+        raise ValueError(f"Column '{metric}' not in DataFrame.")
+
+    ranked = df[metric].dropna().sort_values(ascending=ascending)
+    if topN is not None:
+        ranked = ranked.head(topN)
+    
+    fig, ax = plt.subplots(figsize=(max(6, len(ranked) * 0.6), 5))
+    bars = ax.bar(ranked.index.astype(str), ranked.values, color="steelblue")
+    ax.set_xlabel("Trial ID")
+    ax.set_ylabel(metric)
+    ax.set_title(f"Trials ranked by {metric}" + f" (top {topN})" if topN else "")
+    ax.grid(axis="y", alpha=0.3)
+
+    for bar, val in zip(bars, ranked.values):
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                bar.get_height(),
+                f"{val:.3f}",
+                ha="center", va="bottom", fontsize=8)
+    
     plt.tight_layout()
     if show:
         plt.show()
