@@ -113,3 +113,14 @@ EVALDEFINITIONBIG5 = {
 }
 
 CLASSLABELS = ["Home Win", "Draw", "Away Win"]
+
+COMPWEIGHTS = {
+    "test.accuracy": 0.6,
+    "test.loss": 0.2,
+    "test.ece": 0.2
+}
+COMPASCENDING = {
+    "test.accuracy": False,
+    "test.loss": True,
+    "test.ece": True
+}

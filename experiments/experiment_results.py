@@ -1,7 +1,7 @@
 import json
 import pandas as pd
 
-from typing import Dict, Any, List, Sequence
+from typing import Dict, Any, List, Sequence, Literal
 from pathlib import Path
 
 from .trial import Trial
@@ -25,6 +25,44 @@ def _dropKeys(flat: Dict[str, Any],
         return flat
     return {k: v for k, v in flat.items()
             if not any(k == ex or k.startswith(ex + ".") for ex in exclude)}
+
+def normaliseMetric(df: pd.DataFrame,
+                    col: str,
+                    method: Literal["standard", "minmax"]="standard",
+                    eps: float=1e-8) -> pd.Series:
+    if col not in df.columns:
+        raise ValueError(f"Column '{col}' not found in DataFrame.")
+    series = df[col].astype(float)
+    if method == "standard":
+        std = series.std()
+        return (series - series.mean()) / max(eps, std)
+    elif method == "minmax":
+        low, high = series.min(), series.max()
+        return (series - low) / (high - low)
+
+def addCompositeScore(df: pd.DataFrame,
+                      weights: Dict[str, float],
+                      ascending: Dict[str, bool],
+                      colName: str="composite_score",
+                      normMethod: Literal["standard", "minmax"]|Dict[str, Literal["standard", "minmax"]]="standard") -> pd.DataFrame:
+    if set(weights.keys()) != set(ascending.keys()):
+        raise ValueError("weights and ascending must have the same keys")
+    if isinstance(normMethod, dict):
+        if set(weights.keys()) != set(normMethod.keys()):
+            raise ValueError("if normMethod is dict then it must have the same keys as weights and ascending")
+
+    df = df.copy()
+    totalWeight = sum(weights.values())
+    score = pd.Series(0.0, index=df.index)
+
+    for col, weight in weights.items():
+        score += normaliseMetric(df, 
+                                 col, 
+                                 method=normMethod if not isinstance(normMethod, dict) else normMethod) \
+                                    * (weight / totalWeight) * (-1 if ascending[col] else 1)
+
+    df[colName] = score
+    return df
 
 class ExperimentResults:
     def __init__(self,
@@ -97,3 +135,34 @@ class ExperimentResults:
             return defDf, evalDf
         
         return defDf.join(evalDf, how="inner")
+    
+    def addNormalisedCol(self,
+                         col: str,
+                         df: pd.DataFrame|None=None,
+                         evalHash: str|None=None,
+                         method: Literal["standard", "minmax"]="standard",
+                         eps: float=1e-8) -> pd.DataFrame:
+        if df is None and evalHash is None:
+            raise ValueError("Either df or evalHash must be provided.")
+        
+        df = self.toDataFrame(evalHash=evalHash) if df is None else df.copy()
+        df[f"col_normalised"] = normaliseMetric(df=df,
+                                                col=col,
+                                                method=method,
+                                                eps=eps)
+    
+    def addCompositeScore(self,
+                          weights: Dict[str, float],
+                          ascending: Dict[str, bool],
+                          df: pd.DataFrame|None=None,
+                          evalHash: str|None=None,
+                          colName: str="composite_score",
+                          normMethod: Literal["standard", "minmax"]|Dict[str, Literal["standard", "minmax"]]="standard") -> pd.DataFrame:
+        if df is None and evalHash is None:
+            raise ValueError("Either df or evalHash must be provided.")
+        if df is None:
+            df = self.toDataFrame(evalHash=evalHash)
+        return addCompositeScore(df=df,
+                                 weights=weights,
+                                 ascending=ascending,
+                                 colName=colName)
