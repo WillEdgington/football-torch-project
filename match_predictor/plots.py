@@ -6,6 +6,8 @@ from typing import List, Tuple, Literal
 
 from experiments import TrialResult, ExperimentResults
 
+from .config import CLASSLABELS
+
 def _resolveSplits(trialResult: TrialResult,
                    evalHash: str,
                    splits: List[str]|str|None) -> List[str]:
@@ -28,9 +30,14 @@ def _axGrid(n: int,
     axes = np.array(axes).flatten().tolist()
     return fig, axes
 
+def _trialTitle(trialResult: TrialResult,
+                trialID: int|None=None) -> str:
+    return trialResult._trial.path.name + (f" (trial ID: {trialID})" if trialID else "")
+
 def plotLoss(trialResult: TrialResult,
              show: bool=True,
-             ax: plt.Axes|None=None):
+             ax: plt.Axes|None=None,
+             trialID: str|None=None) -> plt.Figure:
     metrics = trialResult.metrics
     if metrics is None:
         raise ValueError("No training metrics found for this trial")
@@ -38,20 +45,25 @@ def plotLoss(trialResult: TrialResult,
     owned = ax is None
     if owned:
         fig, ax = plt.subplots()
+    else:
+        fig = ax.get_figure()
     
     ax.plot(metrics["train_loss"], label="Train")
     ax.plot(metrics["test_loss"], label="Test")
     ax.set_xlabel("Epochs")
-    ax.set_title("Loss") if owned else ax.set_ylabel("Loss")
+    ax.set_title(f"Loss - {_trialTitle(trialResult, trialID)}") if owned else ax.set_ylabel("Loss")
     ax.legend()
 
-    if owned and show:
+    if owned:
         plt.tight_layout()
-        plt.show()
+        if show:
+            plt.show()
+    return fig
 
 def plotAccuracy(trialResult: TrialResult,
                  show: bool=True,
-                 ax: plt.Axes|None=None):
+                 ax: plt.Axes|None=None,
+                 trialID: str|None=None) -> plt.Figure:
     metrics = trialResult.metrics
     if metrics is None:
         raise ValueError("No training metrics found for this trial.")
@@ -59,20 +71,25 @@ def plotAccuracy(trialResult: TrialResult,
     owned = ax is None
     if owned:
         fig, ax = plt.subplots()
+    else:
+        fig = ax.get_figure()
     
     ax.plot(metrics["train_accuracy"], label="Train")
     ax.plot(metrics["test_accuracy"], label="Test")
     ax.set_xlabel("Epochs")
-    ax.set_title("Accuracy") if owned else ax.set_ylabel("Accuracy")
+    ax.set_title(f"Accuracy - {_trialTitle(trialResult, trialID)}") if owned else ax.set_ylabel("Accuracy")
     ax.legend()
 
-    if owned and show:
+    if owned:
         plt.tight_layout()
-        plt.show()
+        if show:
+            plt.show()
+    return fig
 
 def plotTrainingCurves(trialResult: TrialResult,
                        show: bool=True,
-                       trialID: int|None=None):
+                       trialID: int|None=None,
+                       suptitle: str|None="default") -> plt.Figure:
     metrics = trialResult.metrics
     if metrics is None:
         raise ValueError("No training metrics found for this trial.")
@@ -87,18 +104,22 @@ def plotTrainingCurves(trialResult: TrialResult,
     if hasAccuracy:
         plotAccuracy(trialResult=trialResult, show=False, ax=axes[1])
     
-    fig.suptitle(f"Training Curves - {trialResult._trial.path.name}" + f" (trial ID: {trialID})" if trialID else "")
+    if suptitle is not None:
+        fig.suptitle(f"Training Curves - {_trialTitle(trialResult, trialID)}" if suptitle == "default" else suptitle)
+
     plt.tight_layout()
     if show: 
         plt.show()
+    return fig
 
 def plotConfusionMatrix(trialResult: TrialResult,
                         evalHash: str,
                         splits: List[str]|str|None=None,
-                        labels: List[str]=["Home Win", "Draw", "Away Win"],
+                        labels: List[str]=CLASSLABELS,
                         normalise: bool=True,
                         show: bool=True,
-                        trialID: int|None=None):
+                        trialID: int|None=None,
+                        suptitle: str|None="default") -> plt.Figure:
     resolved = _resolveSplits(trialResult=trialResult,
                               evalHash=evalHash,
                               splits=splits)
@@ -140,16 +161,20 @@ def plotConfusionMatrix(trialResult: TrialResult,
     for ax in axes[len(resolved):]:
         ax.axis("off")
     
-    fig.suptitle(f"Confusion Matrix - {trialResult._trial.path.name}" + f" (trial ID: {trialID})" if trialID else "")
+    if suptitle is not None:
+        fig.suptitle(f"Confusion Matrix - {_trialTitle(trialResult, trialID)}" if suptitle == "default" else suptitle)
+
     plt.tight_layout()
     if show:
         plt.show()
+    return fig
 
 def plotReliabilityDiagram(trialResult: TrialResult,
                            evalHash: str,
                            splits: List[str]|str|None=None,
                            show: bool=True,
-                           trialID: int|None=None):
+                           trialID: int|None=None,
+                           suptitle: str|None="default") -> plt.Figure:
     resolved = _resolveSplits(trialResult=trialResult,
                               evalHash=evalHash,
                               splits=splits)
@@ -176,10 +201,60 @@ def plotReliabilityDiagram(trialResult: TrialResult,
     for ax in axes[len(resolved):]:
         ax.axis("off")
     
-    fig.suptitle(f"Reliability Diagram - {trialResult._trial.path.name}" + f" (trial ID: {trialID})" if trialID else "")
+    if suptitle is not None:
+        fig.suptitle(f"Reliability Diagram - {_trialTitle(trialResult, trialID)}" if suptitle == "default" else suptitle)
+
     plt.tight_layout()
     if show:
         plt.show()
+    return fig
+
+def plotTrialSummary(trialResult: TrialResult,
+                     evalHash: str|None=None,
+                     splits: List[str]|str|None=None,
+                     labels: List[str]=CLASSLABELS,
+                     normalise: bool=True,
+                     trialID: int|None=None,
+                     show: bool=True,
+                     suptitle: str|None="default",
+                     trainmetrics: bool=True,
+                     confmat: bool=True,
+                     reliability: bool=True) -> List[plt.Figure]:
+    totalPlots = int(trainmetrics) + int(confmat) + int(reliability)
+    if totalPlots == 0:
+        raise ValueError("Atleast one of trainmetrics, confmat, or reliability must be True")
+    if evalHash is None and (confmat or reliability):
+        raise ValueError("For confusion matrix or reliability plots you must have an evaluator hash (evalHash).")
+    
+    figs = []
+
+    if trainmetrics:
+        figs.append(plotTrainingCurves(trialResult=trialResult,
+                                       trialID=trialID,
+                                       suptitle=suptitle,
+                                       show=False))
+
+    if confmat:
+        figs.append(plotConfusionMatrix(trialResult=trialResult,
+                                        evalHash=evalHash,
+                                        splits=splits,
+                                        labels=labels,
+                                        normalise=normalise,
+                                        trialID=trialID,
+                                        suptitle=suptitle,
+                                        show=False))
+    
+    if reliability:
+        figs.append(plotReliabilityDiagram(trialResult=trialResult,
+                                           evalHash=evalHash,
+                                           splits=splits,
+                                           trialID=trialID,
+                                           suptitle=suptitle,
+                                           show=False))
+        
+    if show:
+        plt.show()
+    return figs
 
 def plotExperimentMetricScatter(xlabel: str,
                                 ylabel: str,
@@ -187,7 +262,8 @@ def plotExperimentMetricScatter(xlabel: str,
                                 evalHash: str|None=None,
                                 df: pd.DataFrame|None=None,
                                 mode: Literal["scatter", "errorbar", "scatter+fit", "errorbar+fit"]="scatter",
-                                show: bool=True):
+                                ax: plt.Axes|None=None,
+                                show: bool=True) -> plt.Figure:
     if df is None and (experimentResults is None or evalHash is None):
         raise ValueError("You must input a DataFrame (df) or an ExperimentResults object (experimentResults) and evaluator hash (evalHash)")
     
@@ -198,7 +274,12 @@ def plotExperimentMetricScatter(xlabel: str,
     if ylabel not in df.columns:
         raise ValueError(f"Column '{ylabel}' not in DataFrame")
     
-    fig, ax = plt.subplots(figsize=(7, 5))
+    owned = ax is None
+    if owned:
+        fig, ax = plt.subplots(figsize=(7, 5))
+    else:
+        fig = ax.get_figure()
+
     x = df[xlabel]
     y = df[ylabel]
 
@@ -234,9 +315,12 @@ def plotExperimentMetricScatter(xlabel: str,
     ax.set_ylabel(ylabel)
     ax.set_title(f"{ylabel} vs {xlabel}")
     ax.grid(alpha=0.3)
-    plt.tight_layout()
-    if show:
-        plt.show()
+
+    if owned:
+        plt.tight_layout()
+        if show:
+            plt.show()
+    return fig
 
 def plotExperimentMetricBar(metric: str,
                             experimentResults: ExperimentResults|None=None,
@@ -244,7 +328,8 @@ def plotExperimentMetricBar(metric: str,
                             df: pd.DataFrame|None=None,
                             ascending: bool=False,
                             topN: int|None=None,
-                            show: bool=True):
+                            ax: plt.Axes|None=None,
+                            show: bool=True) -> plt.Figure:
     if df is None and (experimentResults is None or evalHash is None):
         raise ValueError("You must input a DataFrame (df) or an ExperimentResults object (experimentResults) and evaluator hash (evalHash)")
     
@@ -256,12 +341,17 @@ def plotExperimentMetricBar(metric: str,
     ranked = df[metric].dropna().sort_values(ascending=ascending)
     if topN is not None:
         ranked = ranked.head(topN)
-    
-    fig, ax = plt.subplots(figsize=(max(6, len(ranked) * 0.6), 5))
+
+    owned = ax is None
+    if owned:
+        fig, ax = plt.subplots(figsize=(max(6, len(ranked) * 0.6), 5))
+    else:
+        fig = ax.get_figure()
+
     bars = ax.bar(ranked.index.astype(str), ranked.values, color="steelblue")
     ax.set_xlabel("Trial ID")
     ax.set_ylabel(metric)
-    ax.set_title(f"Trials ranked by {metric}" + f" (top {topN})" if topN else "")
+    ax.set_title(f"Trials ranked by {metric}" + (f" (top {topN})" if topN else ""))
     ax.grid(axis="y", alpha=0.3)
 
     for bar, val in zip(bars, ranked.values):
@@ -273,6 +363,7 @@ def plotExperimentMetricBar(metric: str,
     plt.tight_layout()
     if show:
         plt.show()
+    return fig
 
 # def plotClassConfidenceHistogram(model: torch.nn.Module,
 #                                  dataloader: torch.utils.data.DataLoader,
