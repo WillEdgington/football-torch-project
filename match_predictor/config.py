@@ -80,24 +80,24 @@ BASEDEFINITION = {
     "seed": 42,
 }
 
-# 2.8 million possibilities, should probably shorten it down
+# 2.8 million possibilities, should probably shorten it down (after prune, ~31k)
 SWEEP = {
     ("model", "latentSize"): ["default", 10, 40],
-    ("model", "embDim"): ["default", 2, 3],
+    ("model", "embDim"): ["default", 2], # prune 3
     ("model", "encoderNumDownBlocks"): ["default", 1, 3],
     ("model", "encoderAttnBlocksPerDown"): ["default", 2],
-    ("model", "encoderAttnDropout"): ["default", 0.0, 0.1],
+    ("model", "encoderAttnDropout"): ["default"], # prune completely (0.0, 0.1)
     ("model", "encoderConvActivation"): ["default", "LeakyReLU"],
     ("model", "featExtractorDepth"): ["default", 1, 3],
-    ("model", "featExtractorAttnDropout"): ["default", 0.0, 0.1],
+    ("model", "featExtractorAttnDropout"): ["default"], # prune completely (0.0, 0.1)
     ("model", "featExtractorExpansionFFN"): ["default", 4],
     ("model", "featExtractorActivationFFN"): ["default", "LeakyReLU"],
     ("model", "activationMLP"): ["default", "LeakyReLU"],
     ("optimizer", "lr"): ["default"],
-    ("data", "batchSize"): ["default", 16, 64, 128],
-    ("data", "seqLen"): ["default", 10, 30, 40, 50],
-    ("lossFn", "label_smoothing"): ["default", 0.1, 0.2],
-    ("data", "transform"): ["default", None],
+    ("data", "batchSize"): ["default", 64, 128], # prune 16
+    ("data", "seqLen"): ["default", 30, 40], # prune 10, 50
+    ("lossFn", "label_smoothing"): ["default", 0.1], # prune 0.2
+    ("data", "transform"): ["default"], # prune None
 }
 
 EVALDEFINITIONBIG5 = {
@@ -111,3 +111,5 @@ EVALDEFINITIONBIG5 = {
         "label_smoothing": 0.0
     }
 }
+
+CLASSLABELS = ["Home Win", "Draw", "Away Win"]
