@@ -308,7 +308,7 @@ def plotExperimentMetricScatter(xlabel: str,
                 np.polyval(coeffs, xLine),
                 color="tomato",
                 linewidth=1.5,
-                label=f"fit: f(x)={coeffs[0]:.5f}x + {coeffs[1]:.3f}")
+                label=f"fit: f(x)={coeffs[0]:.3f}x + {coeffs[1]:.3f}")
         ax.legend()
     
     ax.set_xlabel(xlabel)
