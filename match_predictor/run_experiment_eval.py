@@ -4,7 +4,7 @@ from .train import train
 from .constructor import constructMatchPredictorTrial
 from .config import BASEDEFINITION, SWEEP, EVALDEFINITIONBIG5, SAVEDMODELSDIR, COMPWEIGHTS, COMPASCENDING
 from .eval import evaluateMatchPredictorModel
-from .plots import plotTrainingCurves, plotConfusionMatrix, plotReliabilityDiagram, plotExperimentMetricScatter, plotExperimentMetricBar, plotTrialSummary
+from .plots import plotExperimentMetricScatter, plotExperimentMetricBar, plotTrialSummary
 
 if __name__=="__main__":
     evaluator = Evaluator(eval=evaluateMatchPredictorModel,
@@ -26,13 +26,14 @@ if __name__=="__main__":
     filteredDf = addCompositeScore(df=filteredDf,
                                    weights=COMPWEIGHTS,
                                    ascending=COMPASCENDING,
-                                   colName="composite_score")
-    print(filteredDf.sort_values(by="composite_score", ascending=False).head(20)\
+                                   colName="composite_score").sort_values(by="composite_score", ascending=False)
+    print(filteredDf.head(20)\
           [["model.featExtractorActivationFFN", "model.activationMLP",
             "data.batchSize", "data.seqLen",
             "lossFn.label_smoothing", 
             "test.ece", "test.accuracy", "test.loss", 
             "composite_score"]])
+    trialID = filteredDf.index[0]
     plotExperimentMetricScatter(experimentResults=None,
                                 evalHash=None,
                                 df=filteredDf,
@@ -46,24 +47,7 @@ if __name__=="__main__":
                             ascending=False,
                             topN=10,
                             show=True)
-    trialID = 369
     trialResult = results.getTrial(trial_id=trialID)
-    # print(trialResult.definition)
-    # print(trialResult.getEval(evalHash))
-    # plotTrainingCurves(trialResult=trialResult,
-    #                    show=True,
-    #                    trialID=trialID)
-    # plotConfusionMatrix(trialResult=trialResult,
-    #                     evalHash=evalHash,
-    #                     splits=None,
-    #                     normalise=True,
-    #                     show=True,
-    #                     trialID=trialID)
-    # plotReliabilityDiagram(trialResult=trialResult,
-    #                        evalHash=evalHash,
-    #                        splits=None,
-    #                        show=True,
-    #                        trialID=trialID)
     fig = plotTrialSummary(trialResult=trialResult,
                            evalHash=evalHash,
                            normalise=True,
