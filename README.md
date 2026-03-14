@@ -60,12 +60,14 @@ Model architecture consists of:
 - **Attention and convolution-based** context encoder
 - **Attention and feed-forward-based** feature extractor
 - Final **MLP** prediction head
-- Optional residual connections throughout (excluding convolution reshaping blocks)
+- Optional **residual connections** throughout (excluding convolution reshaping blocks)
 
 Input support includes:
-- Home and away team context tensors
-- Temporal masks
-- Missing-value indicator tensors
+- Home and away team **context tensors**
+- **Temporal masks**
+- **Missing-value** indicator **tensors**
+
+**Offline visualisation tools** in ``match_predictor/plots.py`` for analysing completed trials and experiment results, built on top of the experiment tracking library (``experiments/``).
 
 ### Experiment tracking (``experiments/``)
 
@@ -76,7 +78,8 @@ A filesystem-backed **experiment management library** for **automated trial sche
 - **`Evaluator`** - runs evaluation across dataloaders and persists results, keyed by a  hash of the eval definition for reproducibility
 - **`TrialScheduler`** - schedules trial definition for new trial
 - **`Experiment`** - coordinates the full pipeline: scheduling, training, evaluation, and deduplication of completed trials
-- **`ExperimentResults`** - loads trial evaluations and presents them as a `pandas` DataFrame for analysis
+- **`ExperimentResults`** - loads trial evaluations into a `pandas` DataFrame; supports composite scoring via weighted, z-score normalised metrics and a `TrialResult` interface for per-trial analysis
+- **`TrialResult`** - lazy-loading interface for a single trial's definition, training metrics, and evaluation results; provides per-split access and eval lookup by hash
 
 ## Planned / Future Components
 
@@ -86,6 +89,7 @@ A filesystem-backed **experiment management library** for **automated trial sche
 - **Fine-tuning** of pretrained components on the match outcome task
 - **Training parameter scheduling** - learning rate schedules, warmup, and other optimiser strategies integrated into the experiment framework
 - **Advanced trial scheduling** - Bayesian optimisation and other adaptive methods beyond grid search
+- **Online visualisations** - confidence histograms, embedding visualisation (PCA/t-SNE), and attention weight analysis (requires loaded model)
 
 ### Reinforcement Value Learning (planned)
 - Learning value functions from historical odds data
@@ -104,14 +108,17 @@ This layer acts as a **model interpreter and decision optimizer**, rather than a
 This section serves as a **living development log**.
 
 ### Current Focus
-- Experiment visualisations: plots and analysis of completed hyperparameter sweep results
+- Improving the match predictor through pretraining and fine-tuning techniques
 
 ### Recently Completed
+- Experiment visualisations (`match_predictor/plots.py`)
+  - Per-trial offline plots: training curves, confusion matrix, reliability diagram, summary
+  - Experiment-level plots: metric scatter, error bars, trial ranking bar chart
 - Experiment tracking library (`experiments/`)
   - Trial lifecycle management with resume support
   - Grid search scheduler with definition deduplication
   - Evaluation storage keyed by eval definition hash
-  - `ExperimentResults.toDataFrame` for structured results analysis
+  - ``ExperimentResults.toDataFrame`` and per-trial ``TrialResult`` interface
 - Sharded tensor storage system (``SampleStore``)
 - Flexible dataset slicing and grouping
 - Custom temporal and feature-level augmentations
