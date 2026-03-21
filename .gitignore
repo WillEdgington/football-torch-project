@@ -3,3 +3,4 @@ data/
 saved_models/
 tensor_pipeline/saved_tokenisers
 tensor_pipeline/saved_normalisers
+__pycache__/
