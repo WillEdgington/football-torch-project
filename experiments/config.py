@@ -2,7 +2,7 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-from .trainer import Trial
+from .trial import Trial
 
 EXPERIMENTDIR = "saved_models"
 
