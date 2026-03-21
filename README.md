@@ -111,6 +111,7 @@ This section serves as a **living development log**.
 - Improving the match predictor through pretraining and fine-tuning techniques
 
 ### Recently Completed
+- Set up pre-commit hooks with black, ruff, and commitizen for consistent formatting and commit conventions
 - Experiment visualisations (`match_predictor/plots.py`)
   - Per-trial offline plots: training curves, confusion matrix, reliability diagram, summary
   - Experiment-level plots: metric scatter, error bars, trial ranking bar chart
