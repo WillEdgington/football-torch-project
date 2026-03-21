@@ -1,18 +1,21 @@
-import torch
 import random
-
-from tqdm.auto import tqdm
 from typing import Dict, List, Tuple
 
-from tensor_pipeline import Normaliser
+import torch
+from tqdm.auto import tqdm
 
-def correctPredictions(ylogit: torch.Tensor, 
-                      Y: torch.Tensor, 
-                      hgidx: int|None, 
-                      agidx: int|None=None,
-                      goalsStd: float|None=None,
-                      goalsMean: float|None=None,
-                      normaliserName: str="numeric_normaliser.json") -> float:
+from tensor_pipeline.normaliser import Normaliser
+
+
+def correctPredictions(
+    ylogit: torch.Tensor,
+    Y: torch.Tensor,
+    hgidx: int | None,
+    agidx: int | None = None,
+    goalsStd: float | None = None,
+    goalsMean: float | None = None,
+    normaliserName: str = "numeric_normaliser.json",
+) -> float:
     if hgidx is None or agidx is None:
         pred = torch.argmax(ylogit, dim=1)
         actual = Y
@@ -26,23 +29,26 @@ def correctPredictions(ylogit: torch.Tensor,
         awayGoalsPred = (goalsStd * ylogit[:, agidx] + goalsMean).round()
         pred = homeGoalsPred - awayGoalsPred
         actual = Y[:, hgidx] - Y[:, agidx]
-        
+
         pred = torch.sign(pred)
         actual = torch.sign(actual)
 
     return (pred == actual).sum().item()
 
-def trainStep(model: torch.nn.Module, 
-              dataloader: torch.utils.data.DataLoader,
-              lossFn: torch.nn.Module,
-              optimizer: torch.optim.Optimizer,
-              calcAccuracy: bool=False,
-              enableAmp: bool=True,
-              gradClipping: None|float=None,
-              goalsStd: float|None=None,
-              goalsMean: float|None=None,
-              normaliserName: str="numeric_normaliser.json",
-              device: torch.device="cuda" if torch.cuda.is_available() else "cpu") -> Tuple[float, float|None]:
+
+def trainStep(
+    model: torch.nn.Module,
+    dataloader: torch.utils.data.DataLoader,
+    lossFn: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    calcAccuracy: bool = False,
+    enableAmp: bool = True,
+    gradClipping: None | float = None,
+    goalsStd: float | None = None,
+    goalsMean: float | None = None,
+    normaliserName: str = "numeric_normaliser.json",
+    device: torch.device = "cuda" if torch.cuda.is_available() else "cpu",
+) -> Tuple[float, float | None]:
     model.train()
 
     classification = isinstance(lossFn, torch.nn.CrossEntropyLoss)
@@ -66,7 +72,9 @@ def trainStep(model: torch.nn.Module,
                     goalsStd, goalsMean = goalsParams["std"], goalsParams["mean"]
 
     trainLoss = 0.0
-    scaler = torch.amp.GradScaler(device=device, enabled=(device=="cuda" and enableAmp))
+    scaler = torch.amp.GradScaler(
+        device=device, enabled=(device == "cuda" and enableAmp)
+    )
 
     for batch in dataloader:
         xh, xa = batch["home"].to(device), batch["away"].to(device)
@@ -80,12 +88,21 @@ def trainStep(model: torch.nn.Module,
 
         optimizer.zero_grad(set_to_none=True)
 
-        with torch.amp.autocast(device_type=device, enabled=(device=="cuda" and enableAmp)):
+        with torch.amp.autocast(
+            device_type=device, enabled=(device == "cuda" and enableAmp)
+        ):
             ylogit = model(xh, xa, mh, ma, missh, missa)
             loss = lossFn(ylogit, Y)
 
         if calcAccuracy:
-            correct = correctPredictions(ylogit=ylogit, Y=Y, hgidx=hgidx, agidx=agidx, goalsStd=goalsStd, goalsMean=goalsMean)
+            correct = correctPredictions(
+                ylogit=ylogit,
+                Y=Y,
+                hgidx=hgidx,
+                agidx=agidx,
+                goalsStd=goalsStd,
+                goalsMean=goalsMean,
+            )
             trainCorrect += correct
             trainSamples += Y.size(0)
 
@@ -98,21 +115,26 @@ def trainStep(model: torch.nn.Module,
 
         trainLoss += loss.item()
 
-    return trainLoss / len(dataloader), trainCorrect * 100.0 / trainSamples if calcAccuracy else None
+    return trainLoss / len(dataloader), (
+        trainCorrect * 100.0 / trainSamples if calcAccuracy else None
+    )
 
-def testStep(model: torch.nn.Module,
-             dataloader: torch.utils.data.DataLoader,
-             lossFn: torch.nn.Module,
-             calcAccuracy: bool=True,
-             enableAmp: bool=True,
-             goalsStd: float|None=None,
-             goalsMean: float|None=None,
-             normaliserName: str="numeric_normaliser.json",
-             device: torch.device="cuda" if torch.cuda.is_available() else "cpu") -> Tuple[float, float|None]:
+
+def testStep(
+    model: torch.nn.Module,
+    dataloader: torch.utils.data.DataLoader,
+    lossFn: torch.nn.Module,
+    calcAccuracy: bool = True,
+    enableAmp: bool = True,
+    goalsStd: float | None = None,
+    goalsMean: float | None = None,
+    normaliserName: str = "numeric_normaliser.json",
+    device: torch.device = "cuda" if torch.cuda.is_available() else "cpu",
+) -> Tuple[float, float | None]:
     model.eval()
 
     classification = isinstance(lossFn, torch.nn.CrossEntropyLoss)
-    
+
     if calcAccuracy:
         testCorrect = 0.0
         testSamples = 0.0
@@ -137,42 +159,60 @@ def testStep(model: torch.nn.Module,
         for batch in dataloader:
             xh, xa = batch["home"].to(device), batch["away"].to(device)
             mh, ma = batch["mask_home"].to(device), batch["mask_away"].to(device)
-            missh = batch["missing_home"].to(device) if "missing_home" in batch else None
-            missa = batch["missing_away"].to(device) if "missing_away" in batch else None
+            missh = (
+                batch["missing_home"].to(device) if "missing_home" in batch else None
+            )
+            missa = (
+                batch["missing_away"].to(device) if "missing_away" in batch else None
+            )
             Y = batch["y"].to(device)
 
             if classification:
                 Y = Y.squeeze(-1).long()
 
-            with torch.amp.autocast(device_type=device, enabled=(device=="cuda" and enableAmp)):
+            with torch.amp.autocast(
+                device_type=device, enabled=(device == "cuda" and enableAmp)
+            ):
                 ylogit = model(xh, xa, mh, ma, missh, missa)
                 loss = lossFn(ylogit, Y)
             testLoss += loss.item()
 
             if calcAccuracy:
-                correct = correctPredictions(ylogit=ylogit, Y=Y, hgidx=hgidx, agidx=agidx, goalsStd=goalsStd, goalsMean=goalsMean)
+                correct = correctPredictions(
+                    ylogit=ylogit,
+                    Y=Y,
+                    hgidx=hgidx,
+                    agidx=agidx,
+                    goalsStd=goalsStd,
+                    goalsMean=goalsMean,
+                )
                 testCorrect += correct
                 testSamples += Y.size(0)
-    
-    return testLoss / len(dataloader), testCorrect * 100.0 / testSamples if calcAccuracy else None
 
-def train(model: torch.nn.Module,
-          trainDataloader: torch.utils.data.DataLoader,
-          testDataloader: torch.utils.data.DataLoader,
-          lossFn: torch.nn.Module,
-          optimizer: torch.optim.Optimizer,
-          epochs: int=5,
-          seed: int|None=None,
-          results: Dict[str, List[float]]|None=None,
-          calcAccuracy: bool=False,
-          enableAmp: bool=True,
-          gradClipping: None|float=None,
-          normaliserName: str="numeric_normaliser.json",
-          device: str="cuda" if torch.cuda.is_available() else "cpu") -> Dict[str, List[float]]:
+    return testLoss / len(dataloader), (
+        testCorrect * 100.0 / testSamples if calcAccuracy else None
+    )
+
+
+def train(
+    model: torch.nn.Module,
+    trainDataloader: torch.utils.data.DataLoader,
+    testDataloader: torch.utils.data.DataLoader,
+    lossFn: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    epochs: int = 5,
+    seed: int | None = None,
+    results: Dict[str, List[float]] | None = None,
+    calcAccuracy: bool = False,
+    enableAmp: bool = True,
+    gradClipping: None | float = None,
+    normaliserName: str = "numeric_normaliser.json",
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+) -> Dict[str, List[float]]:
     model.to(device)
 
     initialEpoch = 1
-    if results is not None: 
+    if results is not None:
         initialEpoch += len(results["train_loss"])
     else:
         results = {
@@ -194,31 +234,44 @@ def train(model: torch.nn.Module,
         if seed is not None:
             torch.manual_seed(seed=seed + initialEpoch + epoch - 1)
             random.seed(seed + initialEpoch + epoch - 1)
-        trainLoss, trainAccuracy = trainStep(model=model,
-                                             dataloader=trainDataloader,
-                                             lossFn=lossFn,
-                                             optimizer=optimizer,
-                                             calcAccuracy=calcAccuracy,
-                                             enableAmp=enableAmp,
-                                             gradClipping=gradClipping,
-                                             goalsStd=goalsStd,
-                                             goalsMean=goalsMean,
-                                             device=device)
+        trainLoss, trainAccuracy = trainStep(
+            model=model,
+            dataloader=trainDataloader,
+            lossFn=lossFn,
+            optimizer=optimizer,
+            calcAccuracy=calcAccuracy,
+            enableAmp=enableAmp,
+            gradClipping=gradClipping,
+            goalsStd=goalsStd,
+            goalsMean=goalsMean,
+            device=device,
+        )
         results["train_loss"].append(trainLoss)
-        if calcAccuracy: results["train_accuracy"].append(trainAccuracy)
+        if calcAccuracy:
+            results["train_accuracy"].append(trainAccuracy)
 
-        testLoss, testAccuracy = testStep(model=model,
-                                          dataloader=testDataloader,
-                                          lossFn=lossFn,
-                                          calcAccuracy=calcAccuracy,
-                                          enableAmp=enableAmp,
-                                          goalsStd=goalsStd,
-                                          goalsMean=goalsMean,
-                                          device=device)
+        testLoss, testAccuracy = testStep(
+            model=model,
+            dataloader=testDataloader,
+            lossFn=lossFn,
+            calcAccuracy=calcAccuracy,
+            enableAmp=enableAmp,
+            goalsStd=goalsStd,
+            goalsMean=goalsMean,
+            device=device,
+        )
         results["test_loss"].append(testLoss)
-        if calcAccuracy: results["test_accuracy"].append(testAccuracy)
+        if calcAccuracy:
+            results["test_accuracy"].append(testAccuracy)
 
-        print(f"\nEpochs: {epoch+initialEpoch} | (Loss) Train: {trainLoss:.4f}, Test: {testLoss:.4f}" 
-              + (f" | (Accuracy) Train: {trainAccuracy:.2f}, Test: {testAccuracy:.2f}" if calcAccuracy else ""))
-    
+        print(
+            f"\nEpochs: {epoch+initialEpoch} | "
+            f"(Loss) Train: {trainLoss:.4f}, Test: {testLoss:.4f}"
+            + (
+                f" | (Accuracy) Train: {trainAccuracy:.2f}, Test: {testAccuracy:.2f}"
+                if calcAccuracy
+                else ""
+            )
+        )
+
     return results

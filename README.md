@@ -26,7 +26,7 @@ Exploratory **data analysis** and statistical insight generation based on the sc
 - Group-based aggregations and comparisons
 - Analysis of win / draw / loss likelihood when dominating a given statistic
 - Tree and hierarchy-style diagrams illustrating **odds ratio** for:
-  
+
   - Win / Draw / Loss
   - Conditional on statistically significant features (**p-value** thresholds)
 
@@ -39,7 +39,7 @@ Transforms the relational SQLite dataset into **model-ready tensors**.
 - ``Tokeniser`` and ``Normaliser`` objects that fit on the train data
 - Custom **sharded on-disk tensor store** for scalable datasets
 - Persistent indexing for:
-  
+
   - Train / validation / test splits
   - Arbitrary groupings (default is league)
 - Support for variable-length historical context windows via **sequence slicing at dataset load time**

@@ -1,17 +1,20 @@
-import torch
 import json
-
 from pathlib import Path
-from typing import Dict, List, Any, Set, Tuple
+from typing import Any, Dict, List, Tuple
+
+import torch
 
 from .config import TENSORSDIR
 
+
 class SampleStore:
-    def __init__(self,
-                 rootDir: str=TENSORSDIR,
-                 shardSize: int=1024,
-                 metadata: Dict[str, Any]|None=None,
-                 device: str="cpu"):
+    def __init__(
+        self,
+        rootDir: str = TENSORSDIR,
+        shardSize: int = 1024,
+        metadata: Dict[str, Any] | None = None,
+        device: str = "cpu",
+    ):
         self.rootDir = Path(rootDir)
         self.shardSize = shardSize
         self.device = device
@@ -27,25 +30,25 @@ class SampleStore:
 
         self.indices: Dict[str, Dict[str, List[int]]] = {}
         self._shardCache: Dict[int, Dict[str, torch.Tensor]] = {}
-        self._sampleKeys: Tuple[str, ...]|None = None
+        self._sampleKeys: Tuple[str, ...] | None = None
         self.numSamples = 0
 
         self._activeShardId = None
         self._activeShardCount = 0
-        self._activeShard: Dict[str, List[torch.Tensor]]|None = None
+        self._activeShard: Dict[str, List[torch.Tensor]] | None = None
 
         if self.statePath.exists():
             self.load()
-        assert self.metadata is not None, "metadata must not be None if no previous store for metadata found"
+        assert (
+            self.metadata is not None
+        ), "metadata must not be None if no previous store for metadata found"
 
-    def _shardId(self,
-                 idx: int) -> int:
+    def _shardId(self, idx: int) -> int:
         return idx // self.shardSize
-    
-    def _shardPath(self,
-                   shardId: int) -> Path:
+
+    def _shardPath(self, shardId: int) -> Path:
         return self.shardDir / f"shard_{shardId:05d}.pt"
-    
+
     def _resumeActiveShard(self):
         if self.numSamples == 0:
             return
@@ -66,9 +69,7 @@ class SampleStore:
         self._activeShard = shard
         self._activeShardCount = countInShard
 
-    def _startNewShard(self,
-                       shardId: int,
-                       sample: Dict[str, Any]):
+    def _startNewShard(self, shardId: int, sample: Dict[str, Any]):
         self._activeShardId = shardId
         self._activeShardCount = 0
         self._activeShard = {k: [] for k in sample.keys()}
@@ -81,7 +82,7 @@ class SampleStore:
     def _flushActiveShard(self):
         if self._activeShard is None:
             return
-        
+
         path = self._shardPath(shardId=self._activeShardId)
         torch.save(self._activeShard, path)
 
@@ -89,10 +90,7 @@ class SampleStore:
         self._activeShardId = None
         self._activeShardCount = 0
 
-    def addToSplit(self,
-                   split: str,
-                   group: str,
-                   indices: List[int]):
+    def addToSplit(self, split: str, group: str, indices: List[int]):
         self.indices.setdefault(split, {})
         self.indices[split].setdefault(group, [])
         self.indices[split][group].extend(indices)
@@ -101,58 +99,57 @@ class SampleStore:
         self._flushActiveShard()
         self.save()
 
-    def append(self, 
-               sample: Dict[str, torch.Tensor]) -> int:
+    def append(self, sample: Dict[str, torch.Tensor]) -> int:
         idx = self.numSamples
         shardId = self._shardId(idx)
-        
+
         if self._activeShardId is None:
             self._startNewShard(shardId, sample)
 
         if shardId != self._activeShardId:
             self._flushActiveShard()
             self._startNewShard(shardId, sample)
-        
+
         for k, v in sample.items():
             self._activeShard[k].append(v.cpu())
-        
+
         self._activeShardCount += 1
         self.numSamples += 1
         return idx
-    
-    def store(self,
-              split: str,
-              group: str,
-              samples: Dict[str, torch.Tensor]|List[Dict[str, torch.Tensor]]):
+
+    def store(
+        self,
+        split: str,
+        group: str,
+        samples: Dict[str, torch.Tensor] | List[Dict[str, torch.Tensor]],
+    ):
         print(f"split: {split}, group: {group}, number of samples: {len(samples)}")
         if not isinstance(samples, list):
             samples = [samples]
         indices = [self.append(sample=sample) for sample in samples]
         self.addToSplit(split=split, group=group, indices=indices)
 
-    def _loadShard(self,
-                   shardId: int) -> Dict[str, Any]:
+    def _loadShard(self, shardId: int) -> Dict[str, Any]:
         return torch.load(self._shardPath(shardId=shardId), map_location=self.device)
 
-    def getDict(self,
-                idx: int) -> Dict[str, torch.Tensor]:
-        assert idx < self.numSamples and idx >= 0, f"index ({idx}) out of range for samples stored ({self.numSamples})"
+    def getDict(self, idx: int) -> Dict[str, torch.Tensor]:
+        assert (
+            idx < self.numSamples and idx >= 0
+        ), f"index ({idx}) out of range for samples stored ({self.numSamples})"
         shardId = self._shardId(idx)
         offset = idx % self.shardSize
 
         if shardId not in self._shardCache:
             self._shardCache[shardId] = self._loadShard(shardId=shardId)
-        
+
         shard = self._shardCache[shardId]
 
-        return {
-            key: val[offset]
-            for key, val in shard.items()
-        }
-    
-    def getTuple(self,
-                 idx: int) -> Tuple[torch.Tensor, ...]:
-        assert idx < self.numSamples and idx >= 0, f"index ({idx}) out of range for samples stored ({self.numSamples})"
+        return {key: val[offset] for key, val in shard.items()}
+
+    def getTuple(self, idx: int) -> Tuple[torch.Tensor, ...]:
+        assert (
+            idx < self.numSamples and idx >= 0
+        ), f"index ({idx}) out of range for samples stored ({self.numSamples})"
         shardId = self._shardId(idx)
         offset = idx % self.shardSize
 
@@ -160,12 +157,9 @@ class SampleStore:
         if shard is None:
             shard = self._loadShard(shardId)
             self._shardCache[shardId] = shard
-        
-        return tuple(
-            shard[key][offset]
-            for key in self._sampleKeys
-        )
-    
+
+        return tuple(shard[key][offset] for key in self._sampleKeys)
+
     def getMany(self, indices: List[int]) -> List[Dict[str, Any]]:
         return [self.getTuple(i) for i in indices]
 
@@ -185,7 +179,7 @@ class SampleStore:
             with open(self.statePath) as f:
                 state = json.load(f)
                 self.load_state_dict(state)
-        
+
         if self.metaPath.exists():
             with open(self.metaPath) as f:
                 self.metadata = json.load(f)
@@ -195,7 +189,7 @@ class SampleStore:
                 self.indices = json.load(f)
 
         self._resumeActiveShard()
-    
+
     def state_dict(self) -> Dict[str, Any]:
         return {
             "shard_size": self.shardSize,
@@ -203,8 +197,7 @@ class SampleStore:
             "sample_keys": list(self._sampleKeys),
         }
 
-    def load_state_dict(self,
-                        state: Dict[str, Any]):
+    def load_state_dict(self, state: Dict[str, Any]):
         self.shardSize = state["shard_size"]
         self.numSamples = state["num_samples"]
         self._sampleKeys = tuple(state["sample_keys"])

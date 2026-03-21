@@ -1,12 +1,16 @@
-import pandas as pd
-
 from typing import List
 
-from fbref_scraper import DatabaseReader, DBDIR, DBNAME, MATCHTABLE
+import pandas as pd
 
-def prepareMatchDataFrame(dbDir: str=DBDIR, dbName: str=DBNAME, 
-                          dropNArows: List[str]|None=["home_goals", "away_goals"], 
-                          dropCols: List[str]|None=["id", "match_url"]) -> pd.DataFrame:
+from fbref_scraper import DBDIR, DBNAME, MATCHTABLE, DatabaseReader
+
+
+def prepareMatchDataFrame(
+    dbDir: str = DBDIR,
+    dbName: str = DBNAME,
+    dropNArows: List[str] | None = ["home_goals", "away_goals"],
+    dropCols: List[str] | None = ["id", "match_url"],
+) -> pd.DataFrame:
     with DatabaseReader(dbDir=dbDir, dbName=dbName) as db:
         df = db.selectAll(tableName=MATCHTABLE, asDf=True)
 
@@ -24,13 +28,13 @@ def prepareMatchDataFrame(dbDir: str=DBDIR, dbName: str=DBNAME,
                     df[col] = df[col].str.replace("-", " ")
                     df[col] = df[col].str.replace("   ", " - ")
                 continue
-        
+
         df["date"] = pd.to_datetime(df["date"])
-        
+
         if dropNArows:
             df.dropna(subset=dropNArows, inplace=True)
         if dropCols:
             df.drop(columns=dropCols, inplace=True)
-        df.sort_values(by='date', inplace=True)
+        df.sort_values(by="date", inplace=True)
         return df
     return pd.DataFrame()

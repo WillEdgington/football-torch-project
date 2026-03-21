@@ -1,28 +1,32 @@
+import asyncio
+import hashlib
 import time
 from pathlib import Path
-import hashlib
-import asyncio
 
-from rnet import Impersonate, Client
+from rnet import Client, Impersonate
 
-from .config import RATELIMITSECONDS, CACHEDIR
+from .config import CACHEDIR, RATELIMITSECONDS
+
 
 def hashURL(url: str):
     return hashlib.md5(url.encode()).hexdigest()
 
+
 class FBRefFetcher:
-    def __init__(self, delay: int=RATELIMITSECONDS, cacheDir: str=CACHEDIR):
+    def __init__(self, delay: int = RATELIMITSECONDS, cacheDir: str = CACHEDIR):
         self.delay = delay
         self.lastRequestTime = 0
         self.failAttempts = 0
 
         self.cacheDir = Path(cacheDir)
         self.cacheDir.mkdir(parents=True, exist_ok=True)
-        
+
         self.client = Client(impersonate=Impersonate.Firefox139)
         self._loop = None
 
-    async def fetch_async(self, url: str, cache: bool=True, mute: bool=False) -> str:
+    async def fetch_async(
+        self, url: str, cache: bool = True, mute: bool = False
+    ) -> str:
         filename = self.cacheDir / (f"{hashURL(url)}.html")
 
         if cache and filename.exists():
@@ -59,19 +63,20 @@ class FBRefFetcher:
             filename.write_text(html, encoding="utf-8")
 
         return html
-    
+
     def _get_loop(self) -> asyncio.AbstractEventLoop:
         if self._loop is None or self._loop.is_closed():
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
         return self._loop
-    
-    def fetch(self, url: str, cache: bool=True, mute: bool=False) -> str:
+
+    def fetch(self, url: str, cache: bool = True, mute: bool = False) -> str:
         loop = self._get_loop()
-        return loop.run_until_complete(self.fetch_async(url=url,
-                                                        cache=cache,
-                                                        mute=mute))
-    
+        return loop.run_until_complete(
+            self.fetch_async(url=url, cache=cache, mute=mute)
+        )
+
+
 # fetcher = FBRefFetcher()
 # html = fetcher.fetch(url="https://fbref.com/en/matches/560a0a6c/Brentford-Tottenham-Hotspur-January-1-2026-Premier-League",
 #                      cache=False)

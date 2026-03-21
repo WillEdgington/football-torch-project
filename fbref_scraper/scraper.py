@@ -1,18 +1,32 @@
-import os
-import pandas as pd
-from typing import List, Dict, Any
 from pathlib import Path
+from typing import Any, Dict, List
 
-from .config import LEAGUES, MATCHMETADATASCHEMA, DBRAWDIR, DBRAWNAME, METADATATABLE, MATCHTABLE
+import pandas as pd
+
+from .config import (
+    DBRAWDIR,
+    DBRAWNAME,
+    LEAGUES,
+    MATCHMETADATASCHEMA,
+    MATCHTABLE,
+    METADATATABLE,
+)
+from .database_objects import DatabaseWriter
 from .fetcher import FBRefFetcher
 from .league_discovery import discoverSeasonURLs
-from .parser import parseSchedulePage, parseMatchPage
-from .database_objects import DatabaseWriter
+from .parser import parseMatchPage, parseSchedulePage
 
-def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, limit: int=9, 
-                              cachehtml: bool=True, mute: bool=False, refreshCurr: bool=True) -> List[Dict[str, str]]:
+
+def scrapeSeasonsFixturesData(
+    league: str,
+    fetcher: FBRefFetcher | None = None,
+    limit: int = 9,
+    cachehtml: bool = True,
+    mute: bool = False,
+    refreshCurr: bool = True,
+) -> List[Dict[str, str]]:
     assert limit >= 1, "You must scrape atleast one season"
-    if fetcher == None:
+    if fetcher is None:
         fetcher = FBRefFetcher()
 
     if not mute:
@@ -24,10 +38,17 @@ def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, li
     for season, seasonURL in seasons[:limit][::-1]:
         if not mute:
             print(f"    Season: {season}")
-        scheduleURL = seasonURL.replace(f"/{season}/", f"/{season}/schedule/") \
-                               .replace(f"{LEAGUES[league]}/{league}", f"{LEAGUES[league]}/schedule/{league}") \
-                               .replace("-Stats", "-Scores-and-Fixtures")
-        html = fetcher.fetch(scheduleURL, cache=(cachehtml) and not (season == seasons[0][0] and refreshCurr))
+        scheduleURL = (
+            seasonURL.replace(f"/{season}/", f"/{season}/schedule/")
+            .replace(
+                f"{LEAGUES[league]}/{league}", f"{LEAGUES[league]}/schedule/{league}"
+            )
+            .replace("-Stats", "-Scores-and-Fixtures")
+        )
+        html = fetcher.fetch(
+            scheduleURL,
+            cache=(cachehtml) and not (season == seasons[0][0] and refreshCurr),
+        )
         matches = parseSchedulePage(html)
         for match in matches:
             match["league"] = league
@@ -36,9 +57,17 @@ def scrapeSeasonsFixturesData(league: str, fetcher: FBRefFetcher | None=None, li
 
     return allMatches
 
-def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir: str=DBRAWDIR, 
-                                     fileName: str=DBRAWNAME, save: bool=True, cachehtml: bool=True,
-                                     useDb: bool=True, mute: bool=False, refreshCurr: bool=True) -> pd.DataFrame:
+
+def scrapeLeaguesSeasonsFixturesData(
+    fetcher: FBRefFetcher | None = None,
+    fileDir: str = DBRAWDIR,
+    fileName: str = DBRAWNAME,
+    save: bool = True,
+    cachehtml: bool = True,
+    useDb: bool = True,
+    mute: bool = False,
+    refreshCurr: bool = True,
+) -> pd.DataFrame:
     filePath = Path(fileDir) / fileName
     if fetcher is None:
         fetcher = FBRefFetcher()
@@ -46,8 +75,10 @@ def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir:
     allMatches = []
 
     for league in LEAGUES.keys():
-        allMatches += scrapeSeasonsFixturesData(league, cachehtml=cachehtml, mute=mute, refreshCurr=refreshCurr)
-    
+        allMatches += scrapeSeasonsFixturesData(
+            league, cachehtml=cachehtml, mute=mute, refreshCurr=refreshCurr
+        )
+
     df = pd.DataFrame(allMatches)
     if save:
         if useDb:
@@ -57,16 +88,20 @@ def scrapeLeaguesSeasonsFixturesData(fetcher: FBRefFetcher | None=None, fileDir:
             db.close()
             if not mute:
                 print(f"\nSAVED {len(df)} MATCHES TO: {db.dbPath}")
-        else:    
+        else:
             filePath.parent.mkdir(parents=True, exist_ok=True)
             df.to_csv(filePath, index=False)
             if not mute:
                 print(f"\nSAVED {len(df)} MATCHES TO: {filePath}")
     return df
 
+
 # Match data scraper
 
-def createMatchSchema(scrapedMatches: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+
+def createMatchSchema(
+    scrapedMatches: List[Dict[str, Any]]
+) -> Dict[str, Dict[str, Any]]:
     schema = {}
     for key in scrapedMatches[0].keys():
         schema[key] = {}
@@ -80,16 +115,25 @@ def createMatchSchema(scrapedMatches: List[Dict[str, Any]]) -> Dict[str, Dict[st
 
     return schema
 
-def scrapeMatchData(fetcher: FBRefFetcher | None=None, dbDir: str=DBRAWDIR, 
-                    dbName: str=DBRAWNAME, metadataName: str=METADATATABLE, savepoint: int=10, 
-                    cachehtml: bool=False, mute: bool=False):
+
+def scrapeMatchData(
+    fetcher: FBRefFetcher | None = None,
+    dbDir: str = DBRAWDIR,
+    dbName: str = DBRAWNAME,
+    metadataName: str = METADATATABLE,
+    savepoint: int = 10,
+    cachehtml: bool = False,
+    mute: bool = False,
+):
     assert savepoint > 0, "savepoint must be greater than 0."
     tableName = MATCHTABLE
     if fetcher is None:
         fetcher = FBRefFetcher()
-    
+
     with DatabaseWriter(dbDir=dbDir, dbName=dbName) as db:
-        metadata = db.selectCols('id', 'match_url', tableName=metadataName, orderby="id")
+        metadata = db.selectCols(
+            "id", "match_url", tableName=metadataName, orderby="id"
+        )
         totalMatches = len(metadata)
         if not mute:
             print(f"Found {totalMatches} matches in metadata table.")
@@ -100,12 +144,14 @@ def scrapeMatchData(fetcher: FBRefFetcher | None=None, dbDir: str=DBRAWDIR,
         for matchTuple in metadata:
             scrapeCount += 1
             matchId, matchUrl = matchTuple[:2]
-            if (matchUrl is None) or (db.rowExists(tableName=tableName, colValue=matchUrl, col="match_url")):
+            if (matchUrl is None) or (
+                db.rowExists(tableName=tableName, colValue=matchUrl, col="match_url")
+            ):
                 continue
-            
+
             if not mute:
                 print(f"[{scrapeCount}/{totalMatches}] Scraping data from: {matchUrl}")
-            
+
             html = fetcher.fetch(matchUrl, cache=cachehtml)
             matchdata = parseMatchPage(html, matchDict={})
             matchdata["match_url"] = matchUrl
@@ -117,8 +163,12 @@ def scrapeMatchData(fetcher: FBRefFetcher | None=None, dbDir: str=DBRAWDIR,
                 if scrapeCount == savepoint:
                     if not mute:
                         print(f"Creating table: {tableName} in DB...")
-                    db.createTable(tableName=tableName, schema=createMatchSchema(scrapedMatches=scrapedMatches), overwrite=True)
-                
+                    db.createTable(
+                        tableName=tableName,
+                        schema=createMatchSchema(scrapedMatches=scrapedMatches),
+                        overwrite=True,
+                    )
+
                 if not mute:
                     print(f"Saving {len(scrapedMatches)} matches to DB...")
 

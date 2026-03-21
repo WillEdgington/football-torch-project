@@ -1,9 +1,10 @@
-import torch
-import numpy as np
-import json
 import hashlib
-
+import json
 from typing import Any, Dict
+
+import numpy as np
+import torch
+
 
 def toJSONSafe(obj: Any) -> Any:
     if isinstance(obj, dict):
@@ -20,7 +21,8 @@ def toJSONSafe(obj: Any) -> Any:
         return obj.item()
     else:
         return obj
-    
+
+
 def hashDefinition(definition: Dict[str, Any]) -> str:
     blob = json.dumps(definition, sort_keys=True).encode()
     return hashlib.sha256(blob).hexdigest()

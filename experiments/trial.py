@@ -1,12 +1,11 @@
 import json
 import time
-
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
+
 
 class Trial:
-    def __init__(self,
-                 path: Path):
+    def __init__(self, path: Path):
         self.path = path
         self.modelPath = path / "models"
         self.modelPath.mkdir(parents=True, exist_ok=True)
@@ -18,16 +17,16 @@ class Trial:
         self.statePath = path / "state.json"
         self.metricsPath = path / "metrics.pt"
 
-        self._definition: Dict[str, Any]|None = None
-        self.state: Dict[str, Any]|None = None
+        self._definition: Dict[str, Any] | None = None
+        self.state: Dict[str, Any] | None = None
 
     def isComplete(self) -> bool:
         return self.getState()["status"] == "completed"
 
     @classmethod
-    def create(cls,
-               definition: Dict[str, Any],
-               root: Path|str="saved_models") -> "Trial":
+    def create(
+        cls, definition: Dict[str, Any], root: Path | str = "saved_models"
+    ) -> "Trial":
         if not isinstance(root, Path):
             root = Path(root)
         createTime = time.time()
@@ -37,13 +36,13 @@ class Trial:
 
         with open(path / "definition.json", "w") as f:
             json.dump(definition, f, indent=2)
-        
+
         state = {
             "status": "created",
             "epochs_completed": 0,
             "max_epoch": definition.get("train", {}).get("epochs"),
             "created_at": createTime,
-            "updated_at": createTime
+            "updated_at": createTime,
         }
 
         with open(path / "state.json", "w") as f:
@@ -51,22 +50,21 @@ class Trial:
 
         trial = cls(path=path)
         trial._definition = definition
-        trial.state = state        
+        trial.state = state
         return trial
 
     @classmethod
-    def load(cls, 
-             path: Path) -> "Trial":
+    def load(cls, path: Path) -> "Trial":
         if not (path / "definition.json").exists():
             raise FileNotFoundError(f"Missing definition.json at: {path}")
         if not (path / "state.json").exists():
             raise FileNotFoundError(f"Missing state.json at: {path}")
-        
+
         trial = cls(path=path)
-        trial.getDefinition()        
+        trial.getDefinition()
         trial.getState()
         return trial
-    
+
     def getState(self) -> Dict[str, Any]:
         if self.state is None:
             if not self.statePath.exists():
@@ -74,11 +72,13 @@ class Trial:
             with open(self.statePath) as f:
                 self.state = json.load(f)
         return self.state
-    
+
     def getDefinition(self) -> Dict[str, Any]:
         if self._definition is None:
             if not self.definitionPath.exists():
-                raise FileNotFoundError(f"Missing definition in path: {self.definitionPath}")
+                raise FileNotFoundError(
+                    f"Missing definition in path: {self.definitionPath}"
+                )
             with open(self.definitionPath) as f:
                 self._definition = json.load(f)
         return self._definition

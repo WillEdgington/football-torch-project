@@ -6,7 +6,7 @@ UNKBUCKETDICT = {
     "referee": 32,
     "season": 8,
     "team": 32,
-    "venue": 32
+    "venue": 32,
 }
 
 PREMATCHDATACOLS = {
@@ -19,7 +19,7 @@ PREMATCHDATACOLS = {
     "match_week_normalised",
     "time_normalised",
     "home_days_since_last_game_normalised",
-    "away_days_since_last_game_normalised"
+    "away_days_since_last_game_normalised",
 }
 
 TOKENISERDIR = "tensor_pipeline/saved_tokenisers"

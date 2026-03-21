@@ -1,6 +1,6 @@
-import torch
+from typing import Any, Callable, Dict, List
 
-from typing import Callable, Dict, List, Any
+import torch
 
 from .trainer import Trial
 
@@ -8,12 +8,12 @@ EXPERIMENTDIR = "saved_models"
 
 TrainFn = Callable[..., Dict[str, List[float]]]
 ConstructorFn = Callable[
-    [Trial], 
+    [Trial],
     Dict[
         str,
-        torch.nn.Module|
-        torch.optim.Optimizer|
-        Dict[str,torch.utils.data.DataLoader]
-    ]
+        torch.nn.Module
+        | torch.optim.Optimizer
+        | Dict[str, torch.utils.data.DataLoader],
+    ],
 ]
 EvaluatorFn = Callable[..., Dict[str, Any]]

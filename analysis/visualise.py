@@ -1,39 +1,77 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 from .prepare_data import (
-                        prepareForAgainstDf, addRollingLeagueDevsAndDiff, getMostRecentRows, cutoffByDate, prepareMatchDataFrame,
-                        getWinProbs, getLinearRegressionStats, getXYAndLinearRegression, getLogisticRegressionStats
-                        )
+    addRollingLeagueDevsAndDiff,
+    cutoffByDate,
+    getLinearRegressionStats,
+    getLogisticRegressionStats,
+    getMostRecentRows,
+    getWinProbs,
+    getXYAndLinearRegression,
+    prepareForAgainstDf,
+    prepareMatchDataFrame,
+)
 
-def plotScatterForAgainst(nameCol: str, valueCol: str, window: int=10, daysAgo: int|None=None,
-                          minGames: int=1, getTopN: int=20, title: str=""):
+
+def plotScatterForAgainst(
+    nameCol: str,
+    valueCol: str,
+    window: int = 10,
+    daysAgo: int | None = None,
+    minGames: int = 1,
+    getTopN: int = 20,
+    title: str = "",
+):
     df = prepareForAgainstDf()
-    df = addRollingLeagueDevsAndDiff(df=df, nameCol=nameCol, valueCol=valueCol,
-                                     window=window, minGames=minGames)
+    df = addRollingLeagueDevsAndDiff(
+        df=df, nameCol=nameCol, valueCol=valueCol, window=window, minGames=minGames
+    )
     df = getMostRecentRows(df=df, nameCol=nameCol, daysAgo=daysAgo)
     df = df.sort_values(by=f"{valueCol}_diff_dev_roll_mean_{nameCol}", ascending=False)
     df = df.head(n=getTopN).reset_index(drop=True)
 
-    plt.scatter(df[f"{valueCol}_for_dev_roll_mean_{nameCol}"], -df[f"{valueCol}_against_dev_roll_mean_{nameCol}"])
+    plt.scatter(
+        df[f"{valueCol}_for_dev_roll_mean_{nameCol}"],
+        -df[f"{valueCol}_against_dev_roll_mean_{nameCol}"],
+    )
     for i, label in enumerate(df[nameCol]):
-        plt.annotate(label,
-                    (df[f"{valueCol}_for_dev_roll_mean_{nameCol}"][i], -df[f"{valueCol}_against_dev_roll_mean_{nameCol}"][i]),
-                    )
+        plt.annotate(
+            label,
+            (
+                df[f"{valueCol}_for_dev_roll_mean_{nameCol}"][i],
+                -df[f"{valueCol}_against_dev_roll_mean_{nameCol}"][i],
+            ),
+        )
     plt.xlabel(f"{valueCol} for")
     plt.ylabel(f"{valueCol} against")
     plt.title(title)
     plt.show()
 
-def plotBarForAgainst(nameCol: str, valueCol: str, window: int=20, daysSinceFirst: int|None=None, 
-                      daysSinceLast: int|None=None, method: str="simple", minGames: int=1, getTopN: int=10, title: str=""):
+
+def plotBarForAgainst(
+    nameCol: str,
+    valueCol: str,
+    window: int = 20,
+    daysSinceFirst: int | None = None,
+    daysSinceLast: int | None = None,
+    method: str = "simple",
+    minGames: int = 1,
+    getTopN: int = 10,
+    title: str = "",
+):
     df = prepareForAgainstDf()
     if daysSinceFirst:
         df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
 
-    df = addRollingLeagueDevsAndDiff(df=df, nameCol=nameCol, valueCol=valueCol, window=window,
-                                     minGames=minGames, method=method)
+    df = addRollingLeagueDevsAndDiff(
+        df=df,
+        nameCol=nameCol,
+        valueCol=valueCol,
+        window=window,
+        minGames=minGames,
+        method=method,
+    )
     df = getMostRecentRows(df=df, nameCol=nameCol, daysAgo=daysSinceLast)
     df = df.sort_values(by=f"{valueCol}_diff_dev_roll_mean_{nameCol}", ascending=False)
     df = df.head(n=getTopN).reset_index(drop=True)
@@ -54,28 +92,52 @@ def plotBarForAgainst(nameCol: str, valueCol: str, window: int=20, daysSinceFirs
     plt.xticks(x, list(df[nameCol]), rotation=45, ha="right")
     plt.xlabel(nameCol.capitalize())
     plt.ylabel("Rolling League Deviation")
-    plt.title(title or f"{nameCol} {valLabel} Rolling League Deviations (Top {getTopN})")
+    plt.title(
+        title or f"{nameCol} {valLabel} Rolling League Deviations (Top {getTopN})"
+    )
     plt.legend()
     plt.tight_layout()
     plt.grid(axis="y", linestyle="--", alpha=0.5)
     plt.show()
 
-def plotTimeForAgainst(nameCol: str, valueCol: str, window: int=20, daysSinceFirst: int|None=None, 
-                      daysSinceLast: int|None=None, method: str="simple", minGames: int=1, getTopN: int=10, title: str=""):
+
+def plotTimeForAgainst(
+    nameCol: str,
+    valueCol: str,
+    window: int = 20,
+    daysSinceFirst: int | None = None,
+    daysSinceLast: int | None = None,
+    method: str = "simple",
+    minGames: int = 1,
+    getTopN: int = 10,
+    title: str = "",
+):
     df = prepareForAgainstDf()
     if daysSinceFirst:
         df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
 
-    df = addRollingLeagueDevsAndDiff(df=df, nameCol=nameCol, valueCol=valueCol, window=window,
-                                     minGames=minGames, method=method)
+    df = addRollingLeagueDevsAndDiff(
+        df=df,
+        nameCol=nameCol,
+        valueCol=valueCol,
+        window=window,
+        minGames=minGames,
+        method=method,
+    )
     recentDf = getMostRecentRows(df=df, nameCol=nameCol, daysAgo=daysSinceLast)
-    recentDf = recentDf.sort_values(by=f"{valueCol}_diff_dev_roll_mean_{nameCol}", ascending=False)
+    recentDf = recentDf.sort_values(
+        by=f"{valueCol}_diff_dev_roll_mean_{nameCol}", ascending=False
+    )
     top = recentDf.head(n=getTopN).reset_index(drop=True)[nameCol].unique()
 
     for name in top:
         nameDf = df[df[nameCol] == name]
-        plt.plot(nameDf["date"], nameDf[f"{valueCol}_diff_dev_roll_mean_{nameCol}"], label=name)
-    
+        plt.plot(
+            nameDf["date"],
+            nameDf[f"{valueCol}_diff_dev_roll_mean_{nameCol}"],
+            label=name,
+        )
+
     plt.ylabel("Rolling League Deviation")
     plt.ylabel(f"{valueCol} Diff Rolling league Dev")
     plt.xlabel("Date")
@@ -83,9 +145,24 @@ def plotTimeForAgainst(nameCol: str, valueCol: str, window: int=20, daysSinceFir
     plt.legend()
     plt.show()
 
-def plotBarWinningStats(getTopN: int=10, showHomeAway: bool=False, filterCol: str|None=None, filter: str="", window: int|None=200, method: str="ema"):
+
+def plotBarWinningStats(
+    getTopN: int = 10,
+    showHomeAway: bool = False,
+    filterCol: str | None = None,
+    filter: str = "",
+    window: int | None = 200,
+    method: str = "ema",
+):
     df = prepareMatchDataFrame()
-    resultDf = getWinProbs(df=df, getTopN=getTopN, filterCol=filterCol, filter=filter, window=window, method=method)
+    resultDf = getWinProbs(
+        df=df,
+        getTopN=getTopN,
+        filterCol=filterCol,
+        filter=filter,
+        window=window,
+        method=method,
+    )
 
     x = np.arange(len(resultDf))
     width = 0.35
@@ -93,14 +170,14 @@ def plotBarWinningStats(getTopN: int=10, showHomeAway: bool=False, filterCol: st
     fig, ax = plt.subplots(figsize=(10, 6))
 
     if showHomeAway:
-        ax.bar(x - width/2, resultDf["home_win_prob"], width=width, label="Home")
-        ax.bar(x + width/2, resultDf["away_win_prob"], width=width, label="Away")
+        ax.bar(x - width / 2, resultDf["home_win_prob"], width=width, label="Home")
+        ax.bar(x + width / 2, resultDf["away_win_prob"], width=width, label="Away")
         ax.legend()
     else:
         ax.bar(x, resultDf["win_prob"], width=width)
 
     filterLabel = "" if filterCol is None else f" for {filterCol} - {filter}"
-    
+
     ax.set_xticks(x)
     ax.set_xticklabels(resultDf["stat"].str.replace("_", " "), rotation=45, ha="right")
     ax.set_ylabel("P(Win | Dominated Stat)")
@@ -110,24 +187,42 @@ def plotBarWinningStats(getTopN: int=10, showHomeAway: bool=False, filterCol: st
     plt.tight_layout()
     plt.show()
 
-def plotBarR2Stats(getTopN: int=15, daysSinceFirst: int|None=None, filterCol: str|None=None, filter: str="", relevanceThresh: float=0.1):
+
+def plotBarR2Stats(
+    getTopN: int = 15,
+    daysSinceFirst: int | None = None,
+    filterCol: str | None = None,
+    filter: str = "",
+    relevanceThresh: float = 0.1,
+):
     df = prepareForAgainstDf()
 
     if daysSinceFirst:
         df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
-    
-    regdf = getLinearRegressionStats(df=df, filterCol=filterCol, filter=filter).head(n=getTopN)
+
+    regdf = getLinearRegressionStats(df=df, filterCol=filterCol, filter=filter).head(
+        n=getTopN
+    )
     regdf["sign"] = np.sign(regdf["coefficients"].apply(lambda x: x[0]))
-    regdf["colour"] = regdf["sign"].map({1: "tab:blue", -1: "tab:red", 0:"gray"})
+    regdf["colour"] = regdf["sign"].map({1: "tab:blue", -1: "tab:red", 0: "gray"})
 
     filterLabel = "" if filterCol is None else f" for {filterCol} - {filter}"
 
     plt.figure(figsize=(10, 6))
     plt.bar(regdf["stat"].str.replace("_", " "), regdf["r2"], color=regdf["colour"])
-    
-    plt.axhline(y=relevanceThresh, color="black", linestyle="--", linewidth=1, alpha=0.5)
-    plt.text(len(regdf) - 2.5, relevanceThresh + 0.005, f"R2 threshold = {relevanceThresh:.2f}", color="black", fontsize=9, va="bottom")
-    
+
+    plt.axhline(
+        y=relevanceThresh, color="black", linestyle="--", linewidth=1, alpha=0.5
+    )
+    plt.text(
+        len(regdf) - 2.5,
+        relevanceThresh + 0.005,
+        f"R2 threshold = {relevanceThresh:.2f}",
+        color="black",
+        fontsize=9,
+        va="bottom",
+    )
+
     plt.ylabel("R2 value")
     plt.title(f"Correlation of Match Stats with Goal Difference{filterLabel}")
     plt.xticks(rotation=45, ha="right")
@@ -141,71 +236,125 @@ def plotBarR2Stats(getTopN: int=15, daysSinceFirst: int|None=None, filterCol: st
     plt.tight_layout()
     plt.show()
 
-def plotXYWithLinearRegression(xCol: str, yCol: str, daysSinceFirst: int|None=None, filterCol: str|None=None, filter: str=""):
+
+def plotXYWithLinearRegression(
+    xCol: str,
+    yCol: str,
+    daysSinceFirst: int | None = None,
+    filterCol: str | None = None,
+    filter: str = "",
+):
     df = prepareForAgainstDf()
 
     if daysSinceFirst:
         df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
-    
-    x, y, lrdict = getXYAndLinearRegression(df=df, xKey=xCol, yKey=yCol, filterCol=filterCol, filter=filter)
+
+    x, y, lrdict = getXYAndLinearRegression(
+        df=df, xKey=xCol, yKey=yCol, filterCol=filterCol, filter=filter
+    )
     plt.figure(figsize=(8, 6))
     plt.scatter(x, y, s=100, color="gray", alpha=0.6)
 
-    plt.plot(x, lrdict["y_pred"], color="blue", linewidth=2, label=f"f(X)={lrdict['coefficients'][0][0]:.1f}X + {lrdict['intercept'][0]:.1f}")
-    
+    plt.plot(
+        x,
+        lrdict["y_pred"],
+        color="blue",
+        linewidth=2,
+        label=(
+            f"f(X)={lrdict['coefficients'][0][0]:.1f}X"
+            f" + {lrdict['intercept'][0]:.1f}"
+        ),
+    )
+
     xLab, yLab = xCol.replace("_", " ").title(), yCol.replace("_", " ").title()
     filterLabel = "" if filterCol is None else f" for {filterCol} - {filter}"
     plt.xlabel(xLab)
     plt.ylabel(yLab)
     plt.title(f"{xLab} vs {yLab}{filterLabel}")
-    
 
     text = f"R2 = {lrdict['r2']:.3f}\nMSE = {lrdict['mse']:.3f}\n"
-    plt.text(0.05, 0.95, text, transform=plt.gca().transAxes,
-            fontsize=9, verticalalignment="top",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.5))
-    
+    plt.text(
+        0.05,
+        0.95,
+        text,
+        transform=plt.gca().transAxes,
+        fontsize=9,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.5),
+    )
+
     plt.legend()
     plt.tight_layout()
     plt.show()
 
-def plotOddsRatioStats(getMostSigN: int=20, daysSinceFirst: int|None=None, filterCol: str|None=None, filter: str="", yKey: str="win", pSigLevel: float=0.05):
-    assert yKey in {"win", "loss", "draw"}, f'yKey ({yKey}) must be either "win", "loss", or "draw"'
+
+def plotOddsRatioStats(
+    getMostSigN: int = 20,
+    daysSinceFirst: int | None = None,
+    filterCol: str | None = None,
+    filter: str = "",
+    yKey: str = "win",
+    pSigLevel: float = 0.05,
+):
+    assert yKey in {
+        "win",
+        "loss",
+        "draw",
+    }, f'yKey ({yKey}) must be either "win", "loss", or "draw"'
     df = prepareForAgainstDf()
-    
+
     if daysSinceFirst:
         df = cutoffByDate(df=df, daysAgo=daysSinceFirst)
 
-    df = getLogisticRegressionStats(df=df, yKey=yKey, filterCol=filterCol, filter=filter)
+    df = getLogisticRegressionStats(
+        df=df, yKey=yKey, filterCol=filterCol, filter=filter
+    )
     statCount = len(df)
     df = df[df["p_value"] < pSigLevel].sort_values("p_value")
     sigCount = len(df)
     df = df.head(n=getMostSigN).sort_values("odds_ratio_std")
-    statLabels = df["stat"].str.replace("_", " ").str.replace(" diff", " difference").str.title()
+    statLabels = (
+        df["stat"].str.replace("_", " ").str.replace(" diff", " difference").str.title()
+    )
 
     plt.figure(figsize=(10, 6))
-    plt.errorbar(df["odds_ratio_std"], 
-                 statLabels,
-                 xerr=[df["odds_ratio_std"] - df["odds_ratio_std_ci_low"],
-                       df["odds_ratio_std_ci_high"] - df["odds_ratio_std"]],
-                 fmt='o',
-                 ecolor='gray',
-                 elinewidth=1.2,
-                 capsize=3,
-                 markersize=6,
-                 mfc='dodgerblue',
-                 mec='black',
-                 alpha=0.85)
+    plt.errorbar(
+        df["odds_ratio_std"],
+        statLabels,
+        xerr=[
+            df["odds_ratio_std"] - df["odds_ratio_std_ci_low"],
+            df["odds_ratio_std_ci_high"] - df["odds_ratio_std"],
+        ],
+        fmt="o",
+        ecolor="gray",
+        elinewidth=1.2,
+        capsize=3,
+        markersize=6,
+        mfc="dodgerblue",
+        mec="black",
+        alpha=0.85,
+    )
     plt.axvline(1, color="gray", linestyle="--")
     plt.xscale("log")
-    plt.yticks(fontsize=11, fontweight='medium')
+    plt.yticks(fontsize=11, fontweight="medium")
 
-    filterLabel = "" if filterCol is None else f" for {filterCol.title()} - {filter.title()}"
+    filterLabel = (
+        "" if filterCol is None else f" for {filterCol.title()} - {filter.title()}"
+    )
     plt.xlabel("Odds Ratio (log scale)")
     plt.title(f"Effect of Match Stats on {yKey.title()} Probability{filterLabel}")
 
-    text = f'Observations: {df["observations"].max()}\nSignificant Stats (p<0.05): {sigCount}/{statCount}'
-    plt.text(0.05, 0.95, text, transform=plt.gca().transAxes,
-            fontsize=11, verticalalignment="top",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.5))
+    text = (
+        f'Observations: {df["observations"].max()}\n'
+        f"Significant Stats (p<0.05): {sigCount}/{statCount}"
+    )
+    plt.text(
+        0.05,
+        0.95,
+        text,
+        transform=plt.gca().transAxes,
+        fontsize=11,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.5),
+    )
     plt.show()
