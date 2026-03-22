@@ -33,7 +33,7 @@ class Evaluator:
         self.eval = eval
         self.evalHash = hashDefinition(self.evalDefinition)
 
-    def run(self, trial: Trial) -> Dict[str, Any]:
+    def run(self, trial: Trial) -> str:
         loaded = self._loadTrial(trial)
         evals = {}
         for key, dataloader in loaded["dataloaders"].items():
