@@ -18,7 +18,7 @@ class Experiment:
         scheduler: TrialScheduler,
         train: TrainFn,
         constructer: ConstructorFn,
-        evaluator: Evaluator | None = None,
+        evaluator: List[Evaluator] | Evaluator | None = None,
     ):
         if not isinstance(root, Path):
             root = Path(root)
@@ -32,6 +32,10 @@ class Experiment:
         self.constructor = constructer
 
         self.evaluator = evaluator
+        if self.evaluator is None:
+            self.evaluator = []
+        elif not isinstance(self.evaluator, list):
+            self.evaluator = [self.evaluator]
 
         self._trialsJSON: Path = self.root / "trials.json"
         self.trials: List[Dict[str, Any]] = self._loadTrials()
@@ -93,32 +97,40 @@ class Experiment:
                 return trial, i
         return self._createNextTrial()
 
-    def evalTrial(self, trial: Trial) -> Dict[str, Any] | None:
-        if self.evaluator is None:
-            return None
-        evals = self.evaluator.run(trial)
-        return evals
+    def evalTrial(self, trial: Trial, i: int) -> List[str]:
+        evalHashes = []
+        for evaluator in self.evaluator:
+            evalHash = evaluator.run(trial)
+            if evalHash not in self.trials[i]["evals"]:
+                self.trials[i]["evals"].append(evalHash)
+            evalHashes.append(evalHash)
+        self._saveTrials()
+        return evalHashes
 
     def eval(self):
-        if self.evaluator is None:
+        if not self.evaluator:
             print(
                 "Evaluator object must be assigned to Experiment.evaluator"
                 " to use method Experiment.eval"
             )
             return
 
-        evalHash = self.evaluator.evalHash
         new = 0
         for i, t in enumerate(self.trials):
-            if evalHash in t.get("evals", []):
-                continue
-
             trial = Trial.load(path=Path(t["path"]))
             if not trial.isComplete():
                 continue
+
+            pendingEvaluators = [
+                e for e in self.evaluator if e.evalHash not in t.get("evals", [])
+            ]
+            if not pendingEvaluators:
+                continue
+
             new += 1
-            runHash = self.evaluator.run(trial)
-            self.trials[i]["evals"].append(runHash)
+            for evaluator in pendingEvaluators:
+                runHash = evaluator.run(trial)
+                self.trials[i]["evals"].append(runHash)
             self._saveTrials()
 
         print(
@@ -135,11 +147,7 @@ class Experiment:
                 trial=trial, train=self.train, constructor=self.constructor
             )
             trainer.run()
-            if self.evaluator is not None:
-                evalHash = self.evaluator.run(trial)
-                if evalHash not in self.trials[i]["evals"]:
-                    self.trials[i]["evals"].append(evalHash)
-
-            self._saveTrials()
+            if self.evaluator:
+                self.evalTrial(trial, i)
 
         print(f"All trials complete.\nTotal trials: {len(self.trials)}")
