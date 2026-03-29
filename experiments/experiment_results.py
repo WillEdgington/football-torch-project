@@ -75,7 +75,9 @@ def addCompositeScore(
             normaliseMetric(
                 df,
                 col,
-                method=normMethod if not isinstance(normMethod, dict) else normMethod,
+                method=(
+                    normMethod if not isinstance(normMethod, dict) else normMethod[col]
+                ),
             )
             * (weight / totalWeight)
             * (-1 if ascending[col] else 1)
