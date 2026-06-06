@@ -1,3 +1,20 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "football-torch-project"
+version = "0.1.0"
+requires-python = ">=3.10"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["analysis*", "experiments*", "fbref_scraper*", "match_predictor*", "tensor_pipeline*", "utils*"]
+
 [tool.commitizen]
 name = "cz_conventional_commits"
 version = "0.1.0"
@@ -11,3 +28,6 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
