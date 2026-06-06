@@ -1,4 +1,12 @@
-black==24.4.2
-ruff==0.4.4
-commitizen==3.27.0
-pre-commit==4.2.0
+# DEVELOPMENT DEPENDENCIES
+
+# Meta-tools
+pre-commit
+commitizen
+
+# Formatting & Linting
+black
+ruff
+
+# Testing
+pytest
